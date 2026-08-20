@@ -955,7 +955,7 @@ button:focus-visible {
     min-height: 300px;
 }
 
-[contenteditable="true"]:empty:before {
+[contenteditable]:empty:before {
     content: attr(placeholder);
     color: var(--outline);
     cursor: text;

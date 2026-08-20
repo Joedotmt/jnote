@@ -1111,8 +1111,8 @@ function renderNoteDetail(note) {
       <button class="btn-secondary ripple" id="btn-move">Move</button>
       <button class="btn-secondary ripple" id="btn-delete">Delete</button>
     </div>
-    <div contenteditable="true" placeholder="Title" class="note-title" id="edit-title">${escapeHtml(displayNote.title)}</div>
-    <div contenteditable="true" placeholder="Take a note..." class="note-detail-content editable" id="edit-content">${escapeHtml(displayNote.content)}</div>
+    <div contenteditable="plaintext-only" placeholder="Title" class="note-title" id="edit-title">${escapeHtml(displayNote.title)}</div>
+    <div contenteditable="plaintext-only" placeholder="Take a note..." class="note-detail-content editable" id="edit-content">${escapeHtml(displayNote.content)}</div>
   `;
 
   const titleEl = document.getElementById('edit-title');
@@ -1145,6 +1145,7 @@ function renderNoteDetail(note) {
   };
 
   [titleEl, contentEl].forEach(el => {
+    bindPlainTextPaste(el);
     el.addEventListener('input', () => {
       persistCurrentDraft();
     });
@@ -2117,6 +2118,38 @@ function cssEscape(value) {
 function escapeHtml(text) {
   const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
   return String(text ?? '').replace(/[&<>"']/g, m => map[m]);
+}
+
+function bindPlainTextPaste(element) {
+  element.addEventListener('paste', event => {
+    event.preventDefault();
+
+    const text = (event.clipboardData?.getData('text/plain') || '')
+      .replace(/\r\n?/g, '\n');
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    let range = selection.rangeCount ? selection.getRangeAt(0) : null;
+    if (!range || !element.contains(range.commonAncestorContainer)) {
+      range = document.createRange();
+      range.selectNodeContents(element);
+      range.collapse(false);
+    }
+
+    range.deleteContents();
+    const textNode = document.createTextNode(text);
+    range.insertNode(textNode);
+    range.setStartAfter(textNode);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    element.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      inputType: 'insertFromPaste',
+      data: text
+    }));
+  });
 }
 
 function getEditableText(element, options = {}) {
