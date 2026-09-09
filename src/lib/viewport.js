@@ -1,6 +1,6 @@
 const KEYBOARD_VIEWPORT_THRESHOLD = 120;
 
-function isEditableElement(element) {
+export function isEditableElement(element) {
   if (!element || element === document.body) return false;
 
   return element.matches?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')

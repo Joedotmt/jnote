@@ -1,5 +1,5 @@
 <script>
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
   let { app, note } = $props();
 
@@ -12,6 +12,16 @@
   });
   let titleElement;
   let contentElement;
+  const actionCount = $derived(app.getActionNoteIds(note.id).length);
+  const internalNoteMime = 'application/x-jnote-note-ids';
+
+  function blockInternalNoteDrop(event) {
+    const types = Array.from(event.dataTransfer?.types || []);
+    if (!types.includes(internalNoteMime)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+  }
 
   function getEditableText(element, options = {}) {
     if (!element) return '';
@@ -37,6 +47,12 @@
   function commit() {
     const value = readEditor();
     app.commitNote(note.id, value.title, value.content);
+  }
+
+  async function deleteNotes() {
+    if (!app.deleteNote(note.id)) return;
+    await tick();
+    document.getElementById('notes-list')?.focus({ preventScroll: true });
   }
 
   function handleTitleKeydown(event) {
@@ -98,15 +114,15 @@
     type="button"
     onclick={() => app.openFolderModal(note.id)}
   >
-    Move
+    {actionCount > 1 ? `Move ${actionCount} Notes` : 'Move'}
   </button>
   <button
     class="btn-secondary ripple"
     id="btn-delete"
     type="button"
-    onclick={() => app.deleteNote(note.id)}
+    onclick={deleteNotes}
   >
-    Delete
+    {actionCount > 1 ? `Delete ${actionCount} Notes` : 'Delete'}
   </button>
 </div>
 
@@ -123,6 +139,8 @@
   oninput={persistDraft}
   onkeydown={handleTitleKeydown}
   onpaste={(event) => handlePlainTextPaste(event, titleElement)}
+  ondragover={blockInternalNoteDrop}
+  ondrop={blockInternalNoteDrop}
 >{initialValue.title}</div>
 
 <div
@@ -137,4 +155,6 @@
   id="edit-content"
   oninput={persistDraft}
   onpaste={(event) => handlePlainTextPaste(event, contentElement)}
+  ondragover={blockInternalNoteDrop}
+  ondrop={blockInternalNoteDrop}
 >{initialValue.content}</div>

@@ -202,15 +202,25 @@ body {
 }
 
 .nlppppp {
-    height: stretch;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
     overflow: hidden;
     border-right: 1px solid var(--outline-variant);
+}
+
+.folders-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 
 /* Desktop: 3-pane layout */
 @media (min-width: 769px) {
     .nlppppp {
+        flex: 0 0 300px;
         width: 300px;
     }
 
@@ -341,6 +351,11 @@ body {
         padding: 0;
         margin: 0;
     }
+
+    .nlppppp {
+        width: 100%;
+        flex: 1;
+    }
 }
 
 
@@ -373,6 +388,10 @@ body {
 .folders-panel {
     display: flex;
     flex-direction: column;
+    min-height: 0;
+    padding-bottom: var(--keyboard-inset);
+    scroll-padding-bottom: calc(16px + var(--keyboard-inset));
+    box-sizing: border-box;
     border-radius: 0;
 }
 
@@ -381,12 +400,14 @@ body {
     flex-direction: column;
 }
 
-#btn-create-note {
+#btn-create-note,
+#btn-create-folder {
     padding: 0;
     width: 100%;
     height: 40px;
     border-radius: 0;
-    position: relative;
+    position: static;
+    flex: 0 0 40px;
     margin-top: auto;
 }
 
@@ -396,6 +417,30 @@ body {
     margin: 0;
     display: flex;
     flex-direction: column;
+}
+
+#notes-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    outline: none;
+}
+
+.notes-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.selection-count {
+    color: var(--primary);
+    font-size: 0.92em;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
 }
 
 
@@ -446,11 +491,156 @@ body {
     color: var(--on-surface);
 }
 
+.folder-item:focus-visible,
+.folder-item.focused:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -3px;
+}
+
 .folder-item.active {
     background: var(--surface-variant);
     border-left-color: var(--primary);
     color: var(--primary);
     font-weight: 500;
+}
+
+.note-list-item.selected {
+    border-left-color: color-mix(in srgb, var(--primary) 72%, var(--outline));
+}
+
+.note-list-item.selected:not(.current) {
+    background: color-mix(in srgb, var(--surface-variant) 78%, transparent);
+    color: var(--on-surface);
+}
+
+.note-list-item.current {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 48%, transparent);
+}
+
+.note-list-item[draggable="true"] {
+    cursor: grab;
+}
+
+#notes-list .note-list-item,
+#folder-list .folder-item {
+    user-select: none;
+}
+
+.note-list-item.dragging {
+    opacity: 0.05;
+    cursor: grabbing;
+}
+
+.jnote-drag-preview {
+    position: fixed;
+    top: -10000px;
+    left: -10000px;
+    width: 260px;
+    height: 64px;
+    pointer-events: none;
+    isolation: isolate;
+    contain: layout style;
+    opacity: 1;
+    color: var(--on-surface);
+    font: 500 0.92rem/1.2 system-ui, sans-serif;
+}
+
+.jnote-drag-card {
+    position: absolute;
+    inset: 14px 12px 4px 4px;
+    box-sizing: border-box;
+    border: 1px solid var(--outline-variant);
+    border-radius: 8px;
+    background: var(--surface-container-high);
+    opacity: 1;
+}
+
+.jnote-drag-card-back {
+    box-shadow: 0 5px 14px rgba(0, 0, 0, 0.2);
+}
+
+.jnote-drag-card-front {
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 11px;
+    border-color: color-mix(in srgb, var(--primary) 58%, var(--outline-variant));
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+}
+
+.jnote-drag-card-front i {
+    flex: 0 0 auto;
+    color: var(--primary);
+    font-size: 21px;
+}
+
+.jnote-drag-title {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.jnote-drag-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 27px;
+    height: 27px;
+    padding: 0 7px;
+    box-sizing: border-box;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--on-primary);
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.folder-item.drag-over {
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+    border-left-color: var(--primary);
+    box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.note-list-item.renaming {
+    background: var(--surface-container-high);
+    border-left-color: var(--primary);
+    cursor: text;
+}
+
+.folder-item.renaming {
+    cursor: text;
+    background: var(--surface-container-high);
+    border-left-color: var(--primary);
+}
+
+.note-rename-input,
+.folder-rename-input {
+    width: 100%;
+    min-width: 0;
+    height: 28px;
+    padding: 2px 6px;
+    border: 1px solid var(--primary);
+    border-radius: 3px;
+    outline: none;
+    background: var(--surface);
+    color: var(--on-surface);
+    font: inherit;
+    box-sizing: border-box;
+    user-select: text;
+}
+
+.note-rename-input:focus,
+.folder-rename-input:focus {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.folder-item-creating {
+    cursor: text;
 }
 
 .empty-state {
@@ -474,11 +664,10 @@ body {
 
 #btn-create-note {
     padding: 0;
-    width: stretch;
+    width: 100%;
     height: 40px;
     border-radius: 0;
-    position: absolute;
-    bottom: 0;
+    position: static;
 }
 
 .menu-button {
@@ -704,6 +893,8 @@ body {
     z-index: 200;
     align-items: center;
     justify-content: center;
+    padding: 16px 16px calc(16px + var(--keyboard-inset));
+    box-sizing: border-box;
 }
 
 .modal.show {
@@ -716,7 +907,13 @@ body {
     border-radius: 12px;
     padding: 24px;
     max-width: 400px;
+    max-height: calc(var(--app-height) - var(--keyboard-inset) - 32px);
     width: 90%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    box-sizing: border-box;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     border: 1px solid var(--outline);
     transform-origin: center;
@@ -738,6 +935,9 @@ body {
     flex-direction: column;
     gap: 8px;
     margin-bottom: 16px;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .folder-option {
@@ -938,6 +1138,13 @@ button:focus-visible {
     margin: 0;
     white-space: pre-wrap;
     word-wrap: break-word;
+}
+
+.note-title:focus-visible,
+.note-detail-content.editable:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 4px;
+    border-radius: 3px;
 }
 
 .note-title {

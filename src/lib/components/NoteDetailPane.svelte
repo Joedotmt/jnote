@@ -1,17 +1,61 @@
 <script>
+  import { tick } from 'svelte';
   import NoteEditor from './NoteEditor.svelte';
 
   let { app } = $props();
+  let detailElement;
+
+  function trapMobileDetailFocus(event) {
+    if (
+      event.key !== 'Tab'
+      || !app.isMobileViewport
+      || !app.detailOpen
+      || app.foldersOpen
+    ) {
+      return;
+    }
+    const focusable = [...detailElement.querySelectorAll(
+      'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), '
+      + '[contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])'
+    )].filter((element, index, elements) => elements.indexOf(element) === index);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  async function closeDetail() {
+    const noteId = app.currentNoteId;
+    app.closeDetail();
+    await tick();
+    const row = [...document.querySelectorAll('#notes-list [data-note-id]')]
+      .find((element) => element.dataset.noteId === noteId);
+    (row || document.getElementById('notes-list'))?.focus({ preventScroll: true });
+  }
 </script>
 
-<div id="detail-container" class="detail-container" class:open={app.detailOpen}>
+<div
+  bind:this={detailElement}
+  id="detail-container"
+  class="detail-container"
+  class:open={app.detailOpen}
+  inert={app.isMobileViewport && (!app.detailOpen || app.foldersOpen) ? true : undefined}
+  aria-hidden={app.isMobileViewport && (!app.detailOpen || app.foldersOpen) ? 'true' : undefined}
+  onkeydown={trapMobileDetailFocus}
+>
   <button
     class="close-detail-btn"
     id="close-detail-btn"
     type="button"
     title="Close"
     aria-label="Close note"
-    onclick={() => app.closeDetail()}
+    onclick={closeDetail}
   >
     <svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor" aria-hidden="true">
       <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />

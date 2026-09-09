@@ -40,10 +40,46 @@ function escapePocketBaseFilterValue(value) {
   return String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
+function getContextMenuPosition(event) {
+  const clientX = Number(event?.clientX) || 0;
+  const clientY = Number(event?.clientY) || 0;
+  if (clientX || clientY) return { x: clientX, y: clientY };
+  const rect = event?.currentTarget?.getBoundingClientRect?.();
+  if (!rect) return { x: 8, y: 8 };
+  return {
+    x: Math.round(rect.left + Math.min(28, rect.width / 2)),
+    y: Math.round(rect.top + Math.min(rect.height, 36))
+  };
+}
+
+export function buildFolderList(notes = [], clientOnlyFolders = []) {
+  const folders = new Set(clientOnlyFolders);
+  notes.forEach((note) => {
+    if (note?.folder) folders.add(note.folder);
+  });
+  folders.delete('Notes');
+  return ['Notes', ...folders].sort((a, b) => (
+    a === 'Notes' ? -1 : b === 'Notes' ? 1 : a.localeCompare(b)
+  ));
+}
+
 export class JNoteState {
   notes = $state([]);
   currentFolder = $state('Notes');
   currentNoteId = $state(null);
+  selectedNoteIds = new SvelteSet();
+  selectionAnchorId = $state(null);
+  focusedNoteId = $state(null);
+  renamingNoteId = $state(null);
+  renameDraftValue = $state('');
+  creatingFolder = $state(false);
+  newFolderDraftValue = $state('');
+  renamingFolder = $state(null);
+  folderRenameDraftValue = $state('');
+  folderActionBusy = $state(false);
+  clientOnlyFolders = new SvelteSet();
+  draggedNoteIds = $state([]);
+  dragOverFolder = $state(null);
   drafts = $state({});
   localNotes = $state({});
   pendingPushes = $state({});
@@ -60,8 +96,23 @@ export class JNoteState {
 
   foldersOpen = $state(false);
   detailOpen = $state(false);
-  folderModal = $state({ open: false, mode: 'move', noteId: null });
-  contextMenu = $state({ open: false, noteId: null, x: 0, y: 0 });
+  isMobileViewport = $state(false);
+  folderModal = $state({
+    open: false,
+    mode: 'move',
+    noteId: null,
+    noteIds: [],
+    returnFocusNoteId: null
+  });
+  contextMenu = $state({
+    open: false,
+    type: null,
+    surface: null,
+    noteId: null,
+    folder: null,
+    x: 0,
+    y: 0
+  });
   settingsOpen = $state(false);
   customCssOpen = $state(false);
   changeKeyOpen = $state(false);
@@ -74,19 +125,11 @@ export class JNoteState {
   editorBaseline = $state({ noteId: null, title: '', content: '' });
   editorRevision = $state(0);
 
-  folders = $derived.by(() => {
-    const folders = new Set(
-      this.notes
-        .map((note) => note.folder)
-        .filter((folder) => folder && folder !== 'Notes')
-    );
-    return ['Notes', ...folders].sort((a, b) => (
-      a === 'Notes' ? -1 : b === 'Notes' ? 1 : a.localeCompare(b)
-    ));
-  });
+  folders = $derived.by(() => buildFolderList(this.notes, this.clientOnlyFolders));
 
   visibleNotes = $derived(this.notes.filter((note) => note.folder === this.currentFolder));
   currentNote = $derived(this.notes.find((note) => note.id === this.currentNoteId) ?? null);
+  selectedCount = $derived(this.getSelectedNoteIds().length);
 
   syncStatus = $derived.by(() => {
     if (this.isKeyMigrationRunning) {
@@ -120,6 +163,7 @@ export class JNoteState {
   // from a newer commit or move waiting behind it.
   activePushIds = new Map();
   activeDirectMoves = new Set();
+  activeDirectMoveNoteIds = new Set();
   noteLoadRequest = 0;
   initialized = false;
 
@@ -717,8 +761,32 @@ export class JNoteState {
       this.editorRevision += 1;
     }
 
+    if (this.selectedNoteIds.has(localNoteId)) {
+      this.selectedNoteIds.delete(localNoteId);
+      this.selectedNoteIds.add(newNoteId);
+    }
+    if (this.selectionAnchorId === localNoteId) this.selectionAnchorId = newNoteId;
+    if (this.focusedNoteId === localNoteId) this.focusedNoteId = newNoteId;
+    if (this.renamingNoteId === localNoteId) this.renamingNoteId = newNoteId;
+    if (this.draggedNoteIds.includes(localNoteId)) {
+      this.draggedNoteIds = this.draggedNoteIds.map((noteId) => (
+        noteId === localNoteId ? newNoteId : noteId
+      ));
+    }
+
     if (this.folderModal.noteId === localNoteId) {
       this.folderModal = { ...this.folderModal, noteId: newNoteId };
+    }
+    if (this.folderModal.noteIds?.includes(localNoteId)) {
+      this.folderModal = {
+        ...this.folderModal,
+        noteIds: this.folderModal.noteIds.map((noteId) => (
+          noteId === localNoteId ? newNoteId : noteId
+        ))
+      };
+    }
+    if (this.folderModal.returnFocusNoteId === localNoteId) {
+      this.folderModal = { ...this.folderModal, returnFocusNoteId: newNoteId };
     }
     if (this.contextMenu.noteId === localNoteId) this.closeContextMenu();
   }
@@ -864,31 +932,350 @@ export class JNoteState {
     });
   }
 
-  selectFolder(folder) {
-    this.currentFolder = folder;
-    this.currentNoteId = null;
-    this.noteLoadState = 'idle';
-    this.editorBaseline = { noteId: null, title: '', content: '' };
-    this.editorRevision += 1;
-    this.foldersOpen = false;
-    if (window.innerWidth <= 768) this.detailOpen = false;
-    this.closeContextMenu();
+  getVisibleNoteIds() {
+    return this.notes
+      .filter((note) => note.folder === this.currentFolder)
+      .map((note) => note.id);
   }
 
-  async selectNote(noteId) {
+  getSelectedNoteIds() {
+    const selected = this.selectedNoteIds;
+    return this.getVisibleNoteIds().filter((noteId) => selected.has(noteId));
+  }
+
+  isNoteSelected(noteId) {
+    return this.selectedNoteIds.has(noteId);
+  }
+
+  getActionNoteIds(originNoteId = null) {
+    const selectedIds = this.getSelectedNoteIds();
+    if (originNoteId && selectedIds.includes(originNoteId)) return selectedIds;
+    return originNoteId && this.notes.some((note) => note.id === originNoteId)
+      ? [originNoteId]
+      : selectedIds;
+  }
+
+  replaceNoteSelection(noteIds, anchorId = null, focusedId = null) {
+    this.selectedNoteIds.clear();
+    noteIds.forEach((noteId) => this.selectedNoteIds.add(noteId));
+    this.selectionAnchorId = anchorId;
+    this.focusedNoteId = focusedId;
+  }
+
+  async selectAllVisibleNotes() {
+    const visibleIds = this.getVisibleNoteIds();
+    if (!visibleIds.length) return false;
+    this.selectedNoteIds.clear();
+    visibleIds.forEach((noteId) => this.selectedNoteIds.add(noteId));
+    const currentId = visibleIds.includes(this.currentNoteId)
+      ? this.currentNoteId
+      : (this.focusedNoteId && visibleIds.includes(this.focusedNoteId)
+          ? this.focusedNoteId
+          : visibleIds[0]);
+    if (!visibleIds.includes(this.selectionAnchorId)) this.selectionAnchorId = visibleIds[0];
+    this.focusedNoteId = currentId;
+    this.cancelRename();
+    await this.openNote(currentId);
+    return true;
+  }
+
+  cancelRename() {
+    this.renamingNoteId = null;
+    this.renameDraftValue = '';
+  }
+
+  resetOpenNote() {
+    this.noteLoadRequest += 1;
+    this.currentNoteId = null;
+    this.noteLoadState = 'idle';
+    this.noteLoadError = '';
+    this.editorBaseline = { noteId: null, title: '', content: '' };
+    this.editorRevision += 1;
+  }
+
+  clearNoteSelection(options = {}) {
+    const closeDetail = options.closeDetail ?? ((globalThis.window?.innerWidth ?? 1024) <= 768);
+    this.selectedNoteIds.clear();
+    this.selectionAnchorId = null;
+    this.focusedNoteId = null;
+    this.cancelRename();
+    this.clearNoteDrag();
+    this.resetOpenNote();
+    this.closeContextMenu();
+    if (closeDetail) this.detailOpen = false;
+  }
+
+  focusNote(noteId) {
+    if (this.notes.some((note) => note.id === noteId)) this.focusedNoteId = noteId;
+  }
+
+  resolveFolderName(folder) {
+    const requested = String(folder ?? '').trim();
+    if (!requested || requested.toLocaleLowerCase() === 'notes') return 'Notes';
+    return buildFolderList(this.notes, this.clientOnlyFolders)
+      .find((existing) => existing.toLocaleLowerCase() === requested.toLocaleLowerCase())
+      || requested;
+  }
+
+  getSuggestedFolderName() {
+    const names = new Set(
+      buildFolderList(this.notes, this.clientOnlyFolders)
+        .map((folder) => folder.toLocaleLowerCase())
+    );
+    let index = 1;
+    let candidate = 'New folder';
+    while (names.has(candidate.toLocaleLowerCase())) {
+      index += 1;
+      candidate = `New folder (${index})`;
+    }
+    return candidate;
+  }
+
+  beginCreateFolder() {
+    if (this.folderActionBusy || this.isKeyMigrationRunning || this.changeKeyBusy) return false;
+    this.cancelFolderRename();
+    this.newFolderDraftValue = this.getSuggestedFolderName();
+    this.creatingFolder = true;
+    this.closeContextMenu();
+    if ((globalThis.window?.innerWidth ?? 1024) <= 768) {
+      this.foldersOpen = true;
+      this.detailOpen = false;
+    }
+    return true;
+  }
+
+  setNewFolderDraft(value) {
+    if (!this.creatingFolder) return;
+    this.newFolderDraftValue = String(value ?? '');
+  }
+
+  commitCreateFolder(value = this.newFolderDraftValue, options = {}) {
+    if (!this.creatingFolder) return null;
+    this.creatingFolder = false;
+    this.newFolderDraftValue = '';
+    return this.createClientFolder(value, options);
+  }
+
+  cancelCreateFolder() {
+    this.creatingFolder = false;
+    this.newFolderDraftValue = '';
+  }
+
+  createClientFolder(folder, options = {}) {
+    const requested = String(folder ?? '').trim();
+    if (!requested) return null;
+    const resolved = this.resolveFolderName(requested);
+    if (resolved !== 'Notes' && !this.notes.some((note) => note.folder === resolved)) {
+      this.clientOnlyFolders.add(resolved);
+    }
+    if (options.select !== false) this.selectFolder(resolved);
+    return resolved;
+  }
+
+  canManageFolder(folder) {
+    if (
+      this.folderActionBusy
+      || this.isKeyMigrationRunning
+      || this.changeKeyBusy
+      || this.activeDirectMoves.size > 0
+    ) {
+      return false;
+    }
+    const resolved = this.resolveFolderName(folder);
+    return resolved !== 'Notes'
+      && buildFolderList(this.notes, this.clientOnlyFolders).includes(resolved);
+  }
+
+  beginRenameFolder(folder) {
+    const resolved = this.resolveFolderName(folder);
+    if (!this.canManageFolder(resolved)) return false;
+    this.cancelCreateFolder();
+    this.renamingFolder = resolved;
+    this.folderRenameDraftValue = resolved;
+    this.closeContextMenu();
+    return true;
+  }
+
+  setFolderRenameDraft(value) {
+    if (!this.renamingFolder) return;
+    this.folderRenameDraftValue = String(value ?? '');
+  }
+
+  cancelFolderRename() {
+    this.renamingFolder = null;
+    this.folderRenameDraftValue = '';
+  }
+
+  async commitFolderRename(value = this.folderRenameDraftValue) {
+    const sourceFolder = this.renamingFolder;
+    const requestedFolder = String(value ?? '').trim();
+    this.cancelFolderRename();
+    if (!sourceFolder || !this.canManageFolder(sourceFolder)) return false;
+    if (!requestedFolder || requestedFolder === sourceFolder) return Boolean(requestedFolder);
+    if (requestedFolder.toLocaleLowerCase() === 'notes') {
+      globalThis.alert?.('“Notes” is the default folder and cannot be replaced.');
+      return false;
+    }
+
+    const folderNames = buildFolderList(this.notes, this.clientOnlyFolders);
+    const existingFolder = folderNames.find((folder) => (
+      folder !== sourceFolder
+      && folder.toLocaleLowerCase() === requestedFolder.toLocaleLowerCase()
+    ));
+    if (existingFolder) {
+      globalThis.alert?.(`A folder named “${existingFolder}” already exists.`);
+      return false;
+    }
+
+    const targetFolder = requestedFolder;
+    const sourceNoteIds = this.notes
+      .filter((note) => note.folder === sourceFolder)
+      .map((note) => note.id);
+    if (sourceNoteIds.some((noteId) => this.activeDirectMoveNoteIds.has(noteId))) {
+      globalThis.alert?.('Wait for the folder’s current note move to finish before renaming it.');
+      return false;
+    }
+    const destinationExisted = folderNames.includes(targetFolder);
+    this.folderActionBusy = true;
+    if (!destinationExisted) this.clientOnlyFolders.add(targetFolder);
+
+    try {
+      if (!sourceNoteIds.length) {
+        this.clientOnlyFolders.delete(sourceFolder);
+        if (targetFolder !== 'Notes') this.clientOnlyFolders.add(targetFolder);
+        if (this.currentFolder === sourceFolder) this.currentFolder = targetFolder;
+        return true;
+      }
+
+      const results = await Promise.all(
+        sourceNoteIds.map((noteId) => this.queueNoteFolderUpdate(noteId, targetFolder, {
+          exactFolderName: true
+        }))
+      );
+      const allMoved = results.every(Boolean);
+      if (!this.notes.some((note) => note.folder === sourceFolder)) {
+        this.clientOnlyFolders.delete(sourceFolder);
+        if (this.currentFolder === sourceFolder) this.currentFolder = targetFolder;
+      }
+      if (!this.notes.some((note) => note.folder === targetFolder) && !destinationExisted) {
+        this.clientOnlyFolders.delete(targetFolder);
+      }
+      return allMoved;
+    } finally {
+      this.folderActionBusy = false;
+    }
+  }
+
+  deleteFolder(folder, confirmDelete = (message) => globalThis.confirm(message)) {
+    const targetFolder = this.resolveFolderName(folder);
+    if (!this.canManageFolder(targetFolder)) return false;
+    const folderNotes = this.notes.filter((note) => note.folder === targetFolder);
+    const draftCount = folderNotes.filter((note) => this.hasDraft(note.id)).length;
+    const message = folderNotes.length
+      ? `Delete folder “${targetFolder}” and its ${folderNotes.length} ${folderNotes.length === 1 ? 'note' : 'notes'}? This cannot be undone.${
+          draftCount ? ` ${draftCount} ${draftCount === 1 ? 'has' : 'have'} unsaved changes.` : ''
+        }`
+      : `Delete empty folder “${targetFolder}”?`;
+    if (!confirmDelete(message)) return false;
+
+    if (folderNotes.length) this.deleteNotes(folderNotes.map((note) => note.id), () => true);
+    this.clientOnlyFolders.delete(targetFolder);
+    this.cancelFolderRename();
+    this.closeContextMenu();
+    if (this.currentFolder === targetFolder) this.selectFolder('Notes');
+    return true;
+  }
+
+  markFolderBacked(folder) {
+    const normalized = String(folder ?? '').trim().toLocaleLowerCase();
+    if (!normalized) return;
+    const clientFolder = [...this.clientOnlyFolders]
+      .find((candidate) => candidate.toLocaleLowerCase() === normalized);
+    if (clientFolder) this.clientOnlyFolders.delete(clientFolder);
+  }
+
+  rememberFolderIfEmpty(folder) {
+    const normalized = String(folder ?? '').trim();
+    if (!normalized || normalized === 'Notes') return;
+    if (!this.notes.some((note) => note.folder === normalized)) {
+      this.clientOnlyFolders.add(normalized);
+    }
+  }
+
+  selectFolder(folder) {
+    this.currentFolder = this.resolveFolderName(folder);
+    this.clearNoteSelection();
+    this.foldersOpen = false;
+  }
+
+  async selectNote(noteId, options = {}) {
+    const note = this.notes.find((candidate) => candidate.id === noteId);
+    if (!note) return false;
+    if (note.folder !== this.currentFolder) {
+      this.currentFolder = note.folder || 'Notes';
+      this.replaceNoteSelection([], null, null);
+    }
+
+    const toggle = options.toggle === true;
+    const extend = options.extend === true;
+    const additive = options.additive === true;
+    const visibleIds = this.getVisibleNoteIds();
+    const targetIndex = visibleIds.indexOf(noteId);
+    if (targetIndex === -1) return false;
+
+    if (this.renamingNoteId && this.renamingNoteId !== noteId) this.cancelRename();
+
+    if (extend) {
+      const anchorIndex = visibleIds.indexOf(this.selectionAnchorId);
+      if (anchorIndex === -1) {
+        this.replaceNoteSelection([noteId], noteId, noteId);
+      } else {
+        if (!additive) this.selectedNoteIds.clear();
+        const start = Math.min(anchorIndex, targetIndex);
+        const end = Math.max(anchorIndex, targetIndex);
+        visibleIds.slice(start, end + 1).forEach((id) => this.selectedNoteIds.add(id));
+        this.focusedNoteId = noteId;
+      }
+    } else if (toggle) {
+      if (this.selectedNoteIds.has(noteId)) this.selectedNoteIds.delete(noteId);
+      else this.selectedNoteIds.add(noteId);
+      this.selectionAnchorId = noteId;
+      this.focusedNoteId = noteId;
+
+      if (!this.selectedNoteIds.size) {
+        this.resetOpenNote();
+        this.closeContextMenu();
+        if ((globalThis.window?.innerWidth ?? 1024) <= 768) this.detailOpen = false;
+        return true;
+      }
+
+      if (!this.selectedNoteIds.has(noteId)) {
+        const fallbackId = visibleIds.find((id) => this.selectedNoteIds.has(id));
+        if (fallbackId && this.currentNoteId === noteId) await this.openNote(fallbackId);
+        return true;
+      }
+    } else {
+      this.replaceNoteSelection([noteId], noteId, noteId);
+    }
+
+    await this.openNote(noteId);
+    return true;
+  }
+
+  async openNote(noteId, options = {}) {
     this.currentNoteId = noteId;
     this.noteLoadError = '';
     this.closeContextMenu();
 
-    if (window.innerWidth <= 768) {
+    if ((globalThis.window?.innerWidth ?? 1024) <= 768) {
       this.foldersOpen = false;
-      this.detailOpen = true;
+      this.detailOpen = options.openDetail !== false;
     }
 
     let note = this.notes.find((candidate) => candidate.id === noteId);
     if (!note) {
       this.noteLoadState = 'idle';
-      return;
+      return false;
     }
 
     const request = ++this.noteLoadRequest;
@@ -918,14 +1305,15 @@ export class JNoteState {
         this.noteLoadState = 'error';
         this.noteLoadError = 'Failed to load note';
         console.error('Error fetching note:', error);
-        return;
+        return false;
       }
     }
 
-    if (request !== this.noteLoadRequest || this.currentNoteId !== noteId) return;
+    if (request !== this.noteLoadRequest || this.currentNoteId !== noteId) return false;
     this.noteLoadState = 'ready';
     this.setEditorBaseline(note);
     this.editorRevision += 1;
+    return true;
   }
 
   getCommittedNote(note) {
@@ -1029,11 +1417,110 @@ export class JNoteState {
     this.editorRevision += 1;
   }
 
+  async beginRenameSelectedNote() {
+    const selectedIds = this.getSelectedNoteIds();
+    const noteId = selectedIds[0];
+    if (
+      selectedIds.length !== 1
+      || this.isKeyMigrationRunning
+      || this.changeKeyBusy
+      || this.activeDirectMoveNoteIds.has(noteId)
+    ) {
+      return false;
+    }
+
+    const loaded = await this.openNote(noteId, { openDetail: false });
+    if (
+      !loaded
+      || this.getSelectedNoteIds().length !== 1
+      || !this.selectedNoteIds.has(noteId)
+    ) {
+      return false;
+    }
+
+    const note = this.notes.find((candidate) => candidate.id === noteId);
+    if (!note) return false;
+    this.renamingNoteId = noteId;
+    this.renameDraftValue = this.getDisplayTitle(note);
+    this.closeContextMenu();
+    return true;
+  }
+
+  canRenameNote(noteId = null) {
+    const selectedIds = this.getSelectedNoteIds();
+    return selectedIds.length === 1
+      && (!noteId || selectedIds[0] === noteId)
+      && !this.isKeyMigrationRunning
+      && !this.changeKeyBusy
+      && !this.activeDirectMoveNoteIds.has(selectedIds[0]);
+  }
+
+  setRenameDraft(value) {
+    if (!this.renamingNoteId) return;
+    this.renameDraftValue = String(value ?? '');
+  }
+
+  commitRename(value = this.renameDraftValue) {
+    const noteId = this.renamingNoteId;
+    if (!noteId) return false;
+    if (this.isKeyMigrationRunning || this.changeKeyBusy) return false;
+
+    const note = this.notes.find((candidate) => candidate.id === noteId);
+    if (!note) {
+      this.cancelRename();
+      return false;
+    }
+
+    const title = String(value ?? '').trim();
+    const previousTitle = this.getDisplayTitle(note);
+    const existingDraft = this.getDraft(noteId)
+      ? { ...this.getDraft(noteId) }
+      : null;
+    const committed = this.getCommittedNote(note);
+    this.cancelRename();
+
+    if (title === previousTitle) return true;
+
+    const pendingCreate = note.isLocalOnly && this.getPendingPush(noteId)?.action === 'create';
+    if (pendingCreate) {
+      const committedContent = committed.content || '';
+      this.commitNote(noteId, title, committedContent);
+      if (existingDraft && (existingDraft.content || '') !== committedContent) {
+        this.saveDraft(noteId, title, existingDraft.content || '', note.folder || 'Notes');
+      }
+      if (this.currentNoteId === noteId) this.editorRevision += 1;
+      return true;
+    }
+
+    if (note.isLocalOnly) {
+      note.title = title;
+      note.updated = now();
+      if (existingDraft) {
+        this.saveDraft(noteId, title, existingDraft.content || '', note.folder || 'Notes');
+      }
+      this.upsertLocalNote(note);
+      if (this.currentNoteId === noteId) {
+        this.editorBaseline = { ...this.editorBaseline, noteId, title };
+        this.editorRevision += 1;
+      }
+      return true;
+    }
+
+    const committedContent = committed.content || '';
+    this.commitNote(noteId, title, committedContent);
+    if (existingDraft && (existingDraft.content || '') !== committedContent) {
+      this.saveDraft(noteId, title, existingDraft.content || '', note.folder || 'Notes');
+    }
+    if (this.currentNoteId === noteId) this.editorRevision += 1;
+    return true;
+  }
+
   createNewNote(folder = this.currentFolder) {
+    const targetFolder = this.resolveFolderName(folder);
     const note = {
       id: makeLocalNoteId(),
       title: '',
-      folder: folder || 'Notes',
+      folder: targetFolder,
       updated: now(),
       hasContent: true,
       content: '',
@@ -1041,61 +1528,157 @@ export class JNoteState {
     };
     this.notes.push(note);
     this.upsertLocalNote(note);
+    this.markFolderBacked(targetFolder);
     this.currentFolder = note.folder;
     this.currentNoteId = note.id;
+    this.replaceNoteSelection([note.id], note.id, note.id);
+    this.cancelRename();
     this.noteLoadState = 'ready';
     this.setEditorBaseline(note);
     this.editorRevision += 1;
+    this.foldersOpen = false;
+    if ((globalThis.window?.innerWidth ?? 1024) <= 768) this.detailOpen = true;
+    this.closeContextMenu();
+    return note;
   }
 
-  deleteNote(noteId) {
-    const note = this.notes.find((candidate) => candidate.id === noteId);
-    if (!note) {
+  deleteNote(noteId, confirmDelete) {
+    return this.deleteNotes(this.getActionNoteIds(noteId), confirmDelete);
+  }
+
+  deleteSelectedNotes(confirmDelete) {
+    return this.deleteNotes(this.getSelectedNoteIds(), confirmDelete);
+  }
+
+  deleteNotes(noteIds, confirmDelete = (message) => globalThis.confirm(message)) {
+    if (this.isKeyMigrationRunning || this.changeKeyBusy) return false;
+    const uniqueIds = [...new Set(noteIds || [])];
+    const notesToDelete = uniqueIds
+      .map((noteId) => this.notes.find((note) => note.id === noteId))
+      .filter(Boolean);
+    if (!notesToDelete.length) {
       this.closeContextMenu();
       return false;
     }
-    if (!confirm('Are you sure you want to delete this note?')) return false;
 
-    this.clearDraft(noteId);
-    this.removeLocalNote(noteId);
-    this.notes = this.notes.filter((candidate) => candidate.id !== noteId);
+    const draftCount = notesToDelete.filter((note) => this.hasDraft(note.id)).length;
+    const message = notesToDelete.length === 1
+      ? `Delete "${this.getDisplayTitle(notesToDelete[0]) || '[untitled]'}"? This cannot be undone.`
+      : `Delete ${notesToDelete.length} selected notes? This cannot be undone.${
+          draftCount ? ` ${draftCount} ${draftCount === 1 ? 'has' : 'have'} unsaved changes.` : ''
+        }`;
+    if (!confirmDelete(message)) return false;
+
+    const deletedIds = new Set(notesToDelete.map((note) => note.id));
+    const sourceFolders = new Set(notesToDelete.map((note) => note.folder || 'Notes'));
+    const currentWasDeleted = deletedIds.has(this.currentNoteId);
+    this.notes = this.notes.filter((note) => !deletedIds.has(note.id));
+    if (deletedIds.has(this.renamingNoteId)) this.cancelRename();
+
+    notesToDelete.forEach((note) => {
+      this.clearDraft(note.id);
+      this.removeLocalNote(note.id);
+      if (note.isLocalOnly && !this.activePushes.has(note.id)) {
+        delete this.pendingPushes[note.id];
+      } else {
+        this.queueDelete(note.id);
+      }
+    });
+    this.persistPendingPushes();
+    sourceFolders.forEach((folder) => this.rememberFolderIfEmpty(folder));
+    deletedIds.forEach((noteId) => this.selectedNoteIds.delete(noteId));
+    const remainingSelectedIds = this.getSelectedNoteIds();
+    if (deletedIds.has(this.selectionAnchorId)) {
+      this.selectionAnchorId = remainingSelectedIds[0] || null;
+    }
+    if (deletedIds.has(this.focusedNoteId)) {
+      this.focusedNoteId = remainingSelectedIds[0] || null;
+    }
+    this.draggedNoteIds = this.draggedNoteIds.filter((noteId) => !deletedIds.has(noteId));
+    if (!this.draggedNoteIds.length) this.dragOverFolder = null;
     this.closeContextMenu();
 
-    if (this.currentNoteId === noteId) {
-      this.currentNoteId = null;
-      this.noteLoadState = 'idle';
-      this.editorBaseline = { noteId: null, title: '', content: '' };
-      this.editorRevision += 1;
-      if (window.innerWidth <= 768) this.detailOpen = false;
+    if (currentWasDeleted) {
+      this.resetOpenNote();
+      const fallbackId = remainingSelectedIds[0];
+      if (fallbackId) {
+        this.focusedNoteId = fallbackId;
+        this.openNote(fallbackId);
+      } else if ((globalThis.window?.innerWidth ?? 1024) <= 768) {
+        this.detailOpen = false;
+      }
     }
-
-    if (note?.isLocalOnly && !this.activePushes.has(noteId)) {
-      delete this.pendingPushes[noteId];
-      this.persistPendingPushes();
-      return true;
-    }
-
-    this.queueDelete(noteId);
     return true;
   }
 
-  async moveNoteToFolder(noteId, folder) {
+  async queueNoteFolderUpdate(noteId, folder, options = {}) {
+    const note = this.notes.find((candidate) => candidate.id === noteId);
+    if (!note) return false;
+    const requestedFolder = String(folder ?? '').trim();
+    const targetFolder = options.exactFolderName
+      ? (requestedFolder || 'Notes')
+      : this.resolveFolderName(requestedFolder);
+    if (note.folder === targetFolder) return true;
+
+    if (note.isLocalOnly || this.pendingPushes[noteId]) {
+      return this.moveNoteToFolder(noteId, targetFolder, options);
+    }
+
+    const sourceFolder = note.folder || 'Notes';
+    note.folder = targetFolder;
+    note.updated = now();
+    if (this.drafts[noteId]) {
+      this.drafts[noteId].folder = targetFolder;
+      this.persistDrafts();
+    }
+    this.pendingPushes[noteId] = {
+      id: makeQueueId(),
+      action: 'update',
+      noteId,
+      folder: targetFolder,
+      syncContent: false,
+      syncFolder: true,
+      queuedAt: now()
+    };
+    this.persistPendingPushes();
+    this.flushNotePush(noteId);
+    this.markFolderBacked(targetFolder);
+    this.rememberFolderIfEmpty(sourceFolder);
+    return true;
+  }
+
+  async moveNoteToFolder(noteId, folder, options = {}) {
     const note = this.notes.find((candidate) => candidate.id === noteId);
     if (!note) return false;
     if (this.isKeyMigrationRunning) {
       alert('Wait for the encryption key change to finish before moving a note.');
       return false;
     }
+    if (this.activeDirectMoveNoteIds.has(noteId)) {
+      alert('This note is already being moved. Wait for that move to finish.');
+      return false;
+    }
 
-    const targetFolder = folder || 'Notes';
+    const sourceFolder = note.folder || 'Notes';
+    const requestedFolder = String(folder ?? '').trim();
+    const targetFolder = options.exactFolderName
+      ? (requestedFolder || 'Notes')
+      : this.resolveFolderName(requestedFolder);
+    if (sourceFolder === targetFolder) return true;
     if (note.isLocalOnly) {
       note.folder = targetFolder;
       note.updated = now();
       this.upsertLocalNote(note);
+      if (this.drafts[noteId]) {
+        this.drafts[noteId].folder = targetFolder;
+        this.persistDrafts();
+      }
       if (this.pendingPushes[noteId]?.action === 'create') {
         this.pendingPushes[noteId].folder = targetFolder;
         this.persistPendingPushes();
       }
+      this.markFolderBacked(targetFolder);
+      this.rememberFolderIfEmpty(sourceFolder);
       return true;
     }
 
@@ -1118,19 +1701,34 @@ export class JNoteState {
       if (contentCoveredBy) queuedMove.contentCoveredBy = contentCoveredBy;
       else delete queuedMove.contentCoveredBy;
       this.pendingPushes[noteId] = queuedMove;
+      if (this.drafts[noteId]) {
+        this.drafts[noteId].folder = targetFolder;
+        this.persistDrafts();
+      }
       this.persistPendingPushes();
       this.flushNotePush(noteId);
+      this.markFolderBacked(targetFolder);
+      this.rememberFolderIfEmpty(sourceFolder);
       return true;
     }
 
     const moveId = makeQueueId();
     this.activeDirectMoves.add(moveId);
+    this.activeDirectMoveNoteIds.add(noteId);
     try {
       const updated = await this.pb.collection('jnote').update(noteId, {
         folder: await this.encryptString(targetFolder)
       });
-      note.folder = targetFolder;
-      note.updated = updated.updated;
+      const liveNote = this.notes.find((candidate) => candidate.id === noteId);
+      if (!liveNote) return true;
+      liveNote.folder = targetFolder;
+      liveNote.updated = updated.updated;
+      if (this.drafts[noteId]) {
+        this.drafts[noteId].folder = targetFolder;
+        this.persistDrafts();
+      }
+      this.markFolderBacked(targetFolder);
+      this.rememberFolderIfEmpty(sourceFolder);
       return true;
     } catch (error) {
       console.error('Error moving note:', error);
@@ -1138,20 +1736,146 @@ export class JNoteState {
       return false;
     } finally {
       this.activeDirectMoves.delete(moveId);
+      this.activeDirectMoveNoteIds.delete(noteId);
     }
+  }
+
+  async moveNotesToFolder(noteIds, folder) {
+    const uniqueIds = [...new Set(noteIds || [])]
+      .filter((noteId) => this.notes.some((note) => note.id === noteId));
+    if (!uniqueIds.length) return false;
+    if (uniqueIds.some((noteId) => this.activeDirectMoveNoteIds.has(noteId))) {
+      alert('One or more selected notes are already being moved. Wait for that move to finish.');
+      return false;
+    }
+    const targetFolder = this.resolveFolderName(folder);
+    const moveCandidateIds = new Set(uniqueIds.filter((noteId) => (
+      this.notes.find((note) => note.id === noteId)?.folder !== targetFolder
+    )));
+    const hasMove = moveCandidateIds.size > 0;
+    const results = await Promise.all(
+      uniqueIds.map((noteId) => this.moveNoteToFolder(noteId, targetFolder))
+    );
+    if (hasMove) {
+      const movedIds = uniqueIds.filter((noteId, index) => (
+        moveCandidateIds.has(noteId) && results[index] === true
+      ));
+      movedIds.forEach((noteId) => this.selectedNoteIds.delete(noteId));
+      const remainingIds = this.getSelectedNoteIds();
+      if (movedIds.includes(this.selectionAnchorId)) {
+        this.selectionAnchorId = remainingIds[0] || null;
+      }
+      if (movedIds.includes(this.focusedNoteId)) {
+        this.focusedNoteId = remainingIds[0] || null;
+      }
+      if (movedIds.includes(this.currentNoteId)) {
+        if (remainingIds.length) {
+          this.focusedNoteId = remainingIds[0];
+          await this.openNote(remainingIds[0]);
+        } else {
+          this.resetOpenNote();
+          if ((globalThis.window?.innerWidth ?? 1024) <= 768) this.detailOpen = false;
+        }
+      }
+    }
+    return results.every(Boolean);
+  }
+
+  beginNoteDrag(event, noteId) {
+    if (this.renamingNoteId || !this.notes.some((note) => note.id === noteId)) {
+      event.preventDefault();
+      return false;
+    }
+    if (!this.selectedNoteIds.has(noteId)) this.selectNote(noteId);
+    const noteIds = this.getActionNoteIds(noteId);
+    if (!noteIds.length) {
+      event.preventDefault();
+      return false;
+    }
+
+    this.draggedNoteIds = noteIds;
+    this.dragOverFolder = null;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('application/x-jnote-note-ids', JSON.stringify(noteIds));
+      event.dataTransfer.setData('text/plain', `${noteIds.length} JNote ${noteIds.length === 1 ? 'note' : 'notes'}`);
+    }
+    this.closeContextMenu();
+    return true;
+  }
+
+  canDropNotesOnFolder(folder) {
+    const targetFolder = this.resolveFolderName(folder);
+    if (this.draggedNoteIds.some((noteId) => this.activeDirectMoveNoteIds.has(noteId))) {
+      return false;
+    }
+    return this.draggedNoteIds.some((noteId) => {
+      const note = this.notes.find((candidate) => candidate.id === noteId);
+      return note && note.folder !== targetFolder;
+    });
+  }
+
+  dragNotesOverFolder(event, folder) {
+    if (!this.canDropNotesOnFolder(folder)) return false;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    this.dragOverFolder = this.resolveFolderName(folder);
+    return true;
+  }
+
+  leaveFolderDropTarget(event, folder) {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    if (this.dragOverFolder === this.resolveFolderName(folder)) this.dragOverFolder = null;
+  }
+
+  async dropNotesOnFolder(event, folder) {
+    if (!this.canDropNotesOnFolder(folder)) {
+      this.clearNoteDrag();
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const noteIds = [...this.draggedNoteIds];
+    const targetFolder = this.resolveFolderName(folder);
+    this.clearNoteDrag();
+    return this.moveNotesToFolder(noteIds, targetFolder);
+  }
+
+  clearNoteDrag() {
+    this.draggedNoteIds = [];
+    this.dragOverFolder = null;
   }
 
   openFolderModal(noteId, mode = 'move') {
     this.closeContextMenu();
-    this.folderModal = { open: true, mode, noteId };
+    const noteIds = mode === 'move'
+      ? this.getActionNoteIds(noteId)
+      : (noteId ? [noteId] : []);
+    if (mode === 'move' && !noteIds.length) return;
+    this.folderModal = {
+      open: true,
+      mode,
+      noteId: noteIds[0] || noteId || null,
+      noteIds,
+      returnFocusNoteId: noteId || noteIds[0] || null
+    };
   }
 
   closeFolderModal() {
-    this.folderModal = { open: false, mode: 'move', noteId: null };
+    this.folderModal = {
+      open: false,
+      mode: 'move',
+      noteId: null,
+      noteIds: [],
+      returnFocusNoteId: null
+    };
   }
 
   toggleFolders() {
     this.foldersOpen = !this.foldersOpen;
+    if (this.foldersOpen && (globalThis.window?.innerWidth ?? 1024) <= 768) {
+      this.detailOpen = false;
+    }
   }
 
   closeFolders() {
@@ -1170,24 +1894,79 @@ export class JNoteState {
 
   handleResize() {
     this.closeContextMenu();
-    if (window.innerWidth > 768) this.closeMobilePanels();
+    this.isMobileViewport = window.innerWidth <= 768;
+    if (!this.isMobileViewport) this.closeMobilePanels();
   }
 
   openContextMenu(event, noteId) {
     event.preventDefault();
     event.stopPropagation();
     if (!this.notes.some((note) => note.id === noteId)) return;
+    if (!this.selectedNoteIds.has(noteId)) {
+      this.selectNote(noteId);
+    } else {
+      this.focusedNoteId = noteId;
+    }
+    const { x, y } = getContextMenuPosition(event);
     this.contextMenu = {
       open: true,
+      type: 'note',
+      surface: null,
       noteId,
-      x: event.clientX,
-      y: event.clientY
+      folder: null,
+      x,
+      y
     };
   }
 
+  openFolderContextMenu(event, folder) {
+    event.preventDefault();
+    event.stopPropagation();
+    const resolved = this.resolveFolderName(folder);
+    if (!buildFolderList(this.notes, this.clientOnlyFolders).includes(resolved)) return false;
+    const { x, y } = getContextMenuPosition(event);
+    this.contextMenu = {
+      open: true,
+      type: 'folder',
+      surface: null,
+      noteId: null,
+      folder: resolved,
+      x,
+      y
+    };
+    return true;
+  }
+
+  openBlankContextMenu(event, surface = 'notes') {
+    event.preventDefault();
+    event.stopPropagation();
+    const normalizedSurface = surface === 'folders' ? 'folders' : 'notes';
+    if (normalizedSurface === 'notes') this.clearNoteSelection();
+    else this.closeContextMenu();
+    const { x, y } = getContextMenuPosition(event);
+    this.contextMenu = {
+      open: true,
+      type: 'blank',
+      surface: normalizedSurface,
+      noteId: null,
+      folder: this.currentFolder,
+      x,
+      y
+    };
+    return true;
+  }
+
   closeContextMenu() {
-    if (!this.contextMenu.open && !this.contextMenu.noteId) return;
-    this.contextMenu = { open: false, noteId: null, x: 0, y: 0 };
+    if (!this.contextMenu.open) return;
+    this.contextMenu = {
+      open: false,
+      type: null,
+      surface: null,
+      noteId: null,
+      folder: null,
+      x: 0,
+      y: 0
+    };
   }
 
   commitFromContextMenu(noteId) {
@@ -1634,6 +2413,19 @@ export class JNoteState {
     }
     if (this.activeDirectMoves.size > 0) {
       return 'A folder move is still being saved to the cloud.';
+    }
+    if (this.renamingNoteId) {
+      const note = this.notes.find((candidate) => candidate.id === this.renamingNoteId);
+      if (note && this.renameDraftValue.trim() !== this.getDisplayTitle(note)) {
+        return 'A note rename is still being edited.';
+      }
+    }
+    if (
+      this.renamingFolder
+      && this.folderRenameDraftValue.trim()
+      && this.folderRenameDraftValue.trim() !== this.renamingFolder
+    ) {
+      return 'A folder rename is still being edited.';
     }
     return '';
   }
