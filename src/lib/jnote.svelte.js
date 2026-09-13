@@ -1,4 +1,4 @@
-import PocketBase from 'pocketbase';
+import PocketBase, { BaseAuthStore } from 'pocketbase';
 import { SvelteSet } from 'svelte/reactivity';
 import {
   createEncryptionMetadata,
@@ -168,7 +168,10 @@ export class JNoteState {
   initialized = false;
 
   get pb() {
-    if (!this.client) this.client = new PocketBase(POCKETBASE_URL);
+    if (!this.client) {
+      const SharedStore = window.JoeSharedAuth?.Store;
+      this.client = new PocketBase(POCKETBASE_URL, SharedStore ? new SharedStore() : new BaseAuthStore());
+    }
     return this.client;
   }
 

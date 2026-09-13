@@ -1,10 +1,15 @@
 <script>
-  import { tick } from 'svelte';
+  import { onMount, tick } from 'svelte';
 
   let { app } = $props();
   let passphrase = $state('');
   let passphraseElement;
   let submittedChoice = $state('remember');
+  let signInUrl = $state('https://joe.mt/account/');
+
+  onMount(() => {
+    signInUrl = `https://joe.mt/account/?redirect=${encodeURIComponent(window.location.href)}`;
+  });
 
   const isSetup = $derived(app.unlockMode === 'setup');
   const isAuthRequired = $derived(app.unlockMode === 'auth-required');
@@ -70,7 +75,7 @@
     </p>
     <p class="encryption-warning">
       {#if isAuthRequired}
-        Sign in with the account link below, then return to JNote.
+        Sign in with the account link below to return to JNote.
       {:else}
         If you forget this key, your notes cannot be recovered.
       {/if}
@@ -78,7 +83,7 @@
 
     {#if isAuthRequired}
       <p class="encryption-auth-copy" id="encryption-auth-copy">
-        Sign in at <a href="https://joe.mt/account">joe.mt/account</a>, then return to JNote.
+        Sign in at <a href={signInUrl}>joe.mt/account</a>, then return to JNote.
       </p>
     {/if}
 

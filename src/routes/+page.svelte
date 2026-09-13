@@ -38,6 +38,13 @@
   onMount(() => {
     const unbindViewport = bindAppViewportSize();
     app.handleResize();
+    const authUserId = app.pb.authStore.record?.id || '';
+    const unsubscribeAuth = app.pb.authStore.onChange((_, record) => {
+      if ((record?.id || '') !== authUserId) {
+        app.unlockMode = 'auth-required';
+        window.location.reload();
+      }
+    });
 
     const handleKeydown = (event) => {
       if (event.defaultPrevented || event.isComposing) return;
@@ -110,6 +117,7 @@
     app.initialize();
 
     return () => {
+      unsubscribeAuth();
       unbindViewport();
       window.removeEventListener('keydown', handleKeydown);
       window.removeEventListener('click', handleWindowClick);
