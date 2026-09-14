@@ -128,35 +128,38 @@
   </button>
 </div>
 
-<div
-  bind:this={titleElement}
-  contenteditable="plaintext-only"
-  role="textbox"
-  tabindex="0"
-  aria-label="Note title"
-  aria-multiline="false"
-  placeholder="Title"
-  class="note-title"
-  id="edit-title"
-  oninput={persistDraft}
-  onkeydown={handleTitleKeydown}
-  onpaste={(event) => handlePlainTextPaste(event, titleElement)}
-  ondragover={blockInternalNoteDrop}
-  ondrop={blockInternalNoteDrop}
->{initialValue.title}</div>
+<div class="note-details-wrapper">
+  <div
+    bind:this={titleElement}
+    contenteditable="plaintext-only"
+    role="textbox"
+    tabindex="0"
+    aria-label="Note title"
+    aria-multiline="false"
+    placeholder="Title"
+    class="note-title"
+    id="edit-title"
+    oninput={persistDraft}
+    onkeydown={handleTitleKeydown}
+    onpaste={(event) => handlePlainTextPaste(event, titleElement)}
+    ondragover={blockInternalNoteDrop}
+    ondrop={blockInternalNoteDrop}
+  >{initialValue.title}</div>
 
-<div
-  bind:this={contentElement}
-  contenteditable="plaintext-only"
-  role="textbox"
-  tabindex="0"
-  aria-label="Note content"
-  aria-multiline="true"
-  placeholder="Take a note..."
-  class="note-detail-content editable"
-  id="edit-content"
-  oninput={persistDraft}
-  onpaste={(event) => handlePlainTextPaste(event, contentElement)}
-  ondragover={blockInternalNoteDrop}
-  ondrop={blockInternalNoteDrop}
->{initialValue.content}</div>
+  <div
+    bind:this={contentElement}
+    contenteditable="plaintext-only"
+    role="textbox"
+    tabindex="0"
+    aria-label="Note content"
+    aria-multiline="true"
+    placeholder="Take a note..."
+    class="note-detail-content editable"
+    id="edit-content"
+    oninput={persistDraft}
+    onpaste={(event) => handlePlainTextPaste(event, contentElement)}
+    ondragover={blockInternalNoteDrop}
+    ondrop={blockInternalNoteDrop}
+  >{initialValue.content}</div>
+
+</div>

@@ -307,7 +307,7 @@ body {
         transform: translateX(100%);
         transition: transform var(--motion-duration-long) var(--motion-emphasized-decelerate);
         will-change: transform;
-        background: var(--background);
+        background: var(--surface);
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -734,7 +734,7 @@ body {
     }
 
     #note-detail {
-        padding: 0 12px 24px;
+        padding: 0;
         scroll-padding-top: 64px;
         scroll-padding-bottom: 24px;
     }
@@ -746,7 +746,7 @@ body {
         min-height: 64px;
         padding: 12px 0;
         box-sizing: border-box;
-        background: var(--background);
+        background: var(--surface);
         animation: none;
     }
 
@@ -770,6 +770,10 @@ body {
 .note-title,
 .note-detail-content {
     animation: content-enter var(--motion-duration-medium) var(--motion-emphasized-decelerate) both;
+}
+
+.note-details-wrapper{
+    padding: 2em;
 }
 
 .note-title {
@@ -1197,7 +1201,7 @@ button:focus-visible {
 .note-title {
     font-size: 2em;
     font-weight: 600;
-    margin: 0 0 8px 0;
+    margin: 0 0 0.6em 0;
     line-height: 1.2;
     word-break: break-word;
     min-height: auto;

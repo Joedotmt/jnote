@@ -146,7 +146,7 @@
     </button>
     <button class="settings-row-button" id="forget-remembered-device" type="button" onclick={() => app.forgetThisDevice()}>
       <i aria-hidden="true">lock</i>
-      <span>Forget remembered device</span>
+      <span>Forget decryption key</span>
     </button>
     {#if app.authMode === 'redirect'}
       <button class="settings-row-button" id="sign-out" type="button" onclick={() => app.signOut()}>

@@ -462,7 +462,7 @@ export class JNoteState {
     try {
       localStorage.removeItem(this.getUserScopedStorageKey(REMEMBERED_DEVICE_KEY_STORAGE_KEY));
     } catch (error) {
-      console.warn('Could not forget remembered device key:', error);
+      console.warn('Could not Forget decryption key key:', error);
     }
   }
 
