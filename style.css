@@ -760,7 +760,7 @@ body {
 .note-detail-content {
     color: var(--on-surface);
     font-size: 1em;
-    line-height: 1.8;
+    line-height: 1.5;
     margin: 0;
     padding: 0;
     white-space: pre-wrap;
@@ -1175,7 +1175,7 @@ button:focus-visible {
     display: block;
     width: 100%;
     overflow: hidden;
-    line-height: 1.8;
+    line-height: 1.5;
     margin: 0;
     white-space: pre-wrap;
     word-wrap: break-word;
@@ -1188,7 +1188,7 @@ button:focus-visible {
 
 .note-title {
     font-size: 2em;
-    font-weight: 600;
+    font-weight: 400;
     margin: 0 0 8px 0;
     line-height: 1.2;
     word-break: break-word;
