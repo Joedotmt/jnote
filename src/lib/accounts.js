@@ -74,6 +74,19 @@ export function takeAccountsHandoffToken() {
   }
 }
 
+/**
+ * Why a handed-over token was refused by the account client, or '' when it was fine or
+ * there was none: 'malformed', 'wrong-type', or 'expired'.
+ */
+export function accountsHandoffProblem() {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.JoeAccounts?.handoffProblem?.() || '';
+  } catch (error) {
+    return '';
+  }
+}
+
 /** Resolves once the optional account script has loaded, or immediately when it is absent. */
 export async function whenAccountsScriptSettled() {
   if (typeof window === 'undefined') return false;

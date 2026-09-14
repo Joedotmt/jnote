@@ -1,6 +1,7 @@
 import PocketBase, { BaseAuthStore, LocalAuthStore } from 'pocketbase';
 import { SvelteSet } from 'svelte/reactivity';
 import {
+  accountsHandoffProblem,
   accountsLoginUrl,
   accountsOrigin,
   isAccountsBridgeAvailable,
@@ -205,7 +206,18 @@ export class JNoteState {
    */
   async consumeAccountHandoff() {
     const token = takeAccountsHandoffToken();
-    if (!token) return false;
+    if (!token) {
+      // A token that arrived but was refused deserves a message; a plain first visit
+      // has nothing to say.
+      const problem = accountsHandoffProblem();
+      if (problem) {
+        console.warn(`The account site's session was refused (${problem}).`);
+        this.accountError = problem === 'expired'
+          ? 'That sign-in had already expired by the time it arrived. Try again.'
+          : `The session from ${accountsOrigin()} was not in a form this app accepts (${problem}).`;
+      }
+      return false;
+    }
 
     this.pb.authStore.save(token, null);
     try {
@@ -221,8 +233,9 @@ export class JNoteState {
 
   async getAccountSession() {
     if (this.authMode !== 'bridge') {
+      // Same shape check the bridge applies, so a handed-over token is held to it too.
       const store = this.pb.authStore;
-      if (!store.isValid || !store.record?.id) return null;
+      if (!store.isValid || !store.record?.id || store.record.collectionName !== 'users') return null;
       return { token: store.token, record: store.record };
     }
     return this.getBridgeSession();
