@@ -972,6 +972,10 @@ export class JNoteState {
       }
       this.pb.authStore.save(session.token, session.record);
       await this.loadCurrentUser();
+      if (this.currentUser.is_jnote_key_set && await this.unlockRememberedDevice()) {
+        await this.finishEncryptionUnlock();
+        return;
+      }
     } catch (error) {
       console.warn('Could not initialize encrypted notes:', error);
       if (this.authMode !== 'bridge') {
@@ -985,7 +989,7 @@ export class JNoteState {
       this.accountReady = true;
     }
 
-    await this.continueAfterSignIn();
+    this.unlockMode = this.currentUser?.is_jnote_key_set ? 'unlock' : 'setup';
   }
 
   signOut() {
