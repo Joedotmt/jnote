@@ -697,11 +697,9 @@ body {
     display: none;
     align-items: center;
     justify-content: center;
-    position: absolute;
-    top: 12px;
-    left: 12px;
     width: 40px;
     height: 40px;
+    flex: 0 0 40px;
     background: transparent;
     border: none;
     cursor: pointer;
@@ -711,6 +709,10 @@ body {
     transition:
         background-color var(--motion-duration-short) linear,
         transform var(--motion-duration-short) var(--motion-standard);
+}
+
+.note-detail-toolbar.close-only {
+    display: none;
 }
 
 .hamburger-btn:hover,
@@ -726,7 +728,6 @@ body {
 @media (max-width: 768px) {
     .close-detail-btn {
         display: flex;
-        z-index: 10;
     }
 
     .detail-container {
@@ -734,9 +735,25 @@ body {
     }
 
     #note-detail {
-        padding: 12px 12px 24px;
+        padding: 0 12px 24px;
         scroll-padding-top: 64px;
         scroll-padding-bottom: 24px;
+    }
+
+    .note-detail-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 9;
+        min-height: 64px;
+        padding: 12px 0;
+        box-sizing: border-box;
+        background: var(--background);
+        animation: none;
+    }
+
+    .note-detail-toolbar.close-only {
+        display: flex;
+        align-items: center;
     }
 }
 
@@ -1075,7 +1092,7 @@ body {
 .btn-secondary:active,
 .folder-input-wrapper button:active,
 .modal-actions button:active,
-.note-actions button:active {
+.note-actions button:not(.close-detail-btn):active {
     transform: scale(0.98);
 }
 
@@ -1108,7 +1125,7 @@ button:focus-visible {
     justify-content: flex-end;
 }
 
-.note-actions button {
+.note-actions button:not(.close-detail-btn) {
     padding: 8px 16px;
     border: 2px solid var(--primary);
     cursor: pointer;
@@ -1122,54 +1139,29 @@ button:focus-visible {
         box-shadow var(--motion-duration-short) linear;
 }
 
-.note-actions button:not(.btn-primary) {
+.note-actions button:not(.btn-primary):not(.close-detail-btn) {
     border: 2px solid var(--outline);
 }
-.note-actions button:not(.btn-primary):hover {
+.note-actions button:not(.btn-primary):not(.close-detail-btn):hover {
     border: 2px solid var(--outline);
     background: var(--surface-bright);
 }
 
 @media (max-width: 768px) {
-    .note-actions {
-        position: sticky;
-        top: 12px;
-        z-index: 9;
-        min-width: 0;
-        min-height: 40px;
-        margin: 0 0 12px 48px;
-        flex-wrap: nowrap;
+    .note-detail-toolbar.note-actions {
+        margin-bottom: 0;
+        flex-wrap: wrap;
         align-items: center;
         justify-content: flex-start;
-        overflow-x: auto;
-        overflow-y: hidden;
-        overscroll-behavior-x: contain;
-        scrollbar-width: none;
     }
 
-    .detail-container::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        right: 0;
-        left: 0;
-        z-index: 8;
-        height: 64px;
-        background: var(--background);
-        pointer-events: none;
-    }
-
-    .note-actions::-webkit-scrollbar {
-        display: none;
-    }
-
-    .note-actions button {
+    .note-detail-toolbar.note-actions > button {
         flex: 0 0 auto;
+        min-height: 40px;
+        height: 40px;
+        box-sizing: border-box;
     }
 
-    .note-actions button:focus-visible {
-        outline-offset: -3px;
-    }
 }
 
 .note-title,

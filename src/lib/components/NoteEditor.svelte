@@ -1,7 +1,8 @@
 <script>
   import { tick, untrack } from 'svelte';
+  import CloseDetailButton from './CloseDetailButton.svelte';
 
-  let { app, note } = $props();
+  let { app, note, onclose } = $props();
 
   const initialValue = untrack(() => {
     const value = app.getEditorValue(note);
@@ -89,7 +90,8 @@
   }
 </script>
 
-<div class="note-actions">
+<div class="note-actions note-detail-toolbar">
+  <CloseDetailButton {onclose} />
   <button
     class="btn-secondary ripple"
     class:hide={!app.hasDraft(note.id)}

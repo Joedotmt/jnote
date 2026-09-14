@@ -1,9 +1,15 @@
 <script>
   import { tick } from 'svelte';
+  import CloseDetailButton from './CloseDetailButton.svelte';
   import NoteEditor from './NoteEditor.svelte';
 
   let { app } = $props();
   let detailElement;
+  const editorReady = $derived(Boolean(
+    app.currentNote
+    && app.noteLoadState !== 'loading'
+    && app.noteLoadState !== 'error'
+  ));
 
   function trapMobileDetailFocus(event) {
     if (
@@ -49,20 +55,13 @@
   aria-hidden={app.isMobileViewport && (!app.detailOpen || app.foldersOpen) ? 'true' : undefined}
   onkeydown={trapMobileDetailFocus}
 >
-  <button
-    class="close-detail-btn"
-    id="close-detail-btn"
-    type="button"
-    title="Close"
-    aria-label="Close note"
-    onclick={closeDetail}
-  >
-    <svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor" aria-hidden="true">
-      <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-    </svg>
-  </button>
-
   <div id="note-detail">
+    {#if !editorReady}
+      <div class="note-detail-toolbar close-only">
+        <CloseDetailButton onclose={closeDetail} />
+      </div>
+    {/if}
+
     {#if !app.currentNote}
       {#if app.loadState === 'error'}
         <p class="error">Failed to load or decrypt notes</p>
@@ -75,7 +74,7 @@
       <p class="error">{app.noteLoadError || 'Failed to load note'}</p>
     {:else}
       {#key `${app.currentNote.id}:${app.editorRevision}`}
-        <NoteEditor app={app} note={app.currentNote} />
+        <NoteEditor app={app} note={app.currentNote} onclose={closeDetail} />
       {/key}
     {/if}
   </div>
