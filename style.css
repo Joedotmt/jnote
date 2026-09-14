@@ -740,7 +740,6 @@ body {
 
 #note-detail {
     overflow-y: auto;
-    padding: 24px;
     padding-bottom: max(24px, calc(24px + var(--keyboard-inset)));
     width: 100%;
     min-height: 0;
@@ -762,6 +761,7 @@ body {
     color: var(--on-surface);
     padding: 0;
     margin: 0;
+    margin-right: auto;
     transition:
         background-color var(--motion-duration-short) linear,
         transform var(--motion-duration-short) var(--motion-standard);
@@ -830,7 +830,7 @@ body {
 }
 
 .note-details-wrapper{
-    padding: 2em;
+    padding: 24px;
 }
 
 .note-title {
@@ -1189,6 +1189,8 @@ button:focus-visible {
     display: flex;
     gap: 8px;
     margin-bottom: 12px;
+    margin: 20px;
+    margin-right: 24px;
     flex-wrap: wrap;
     justify-content: flex-end;
 }
