@@ -9,6 +9,7 @@
     --motion-duration-long: 450ms;
     --app-height: 100vh;
     --keyboard-inset: 0px;
+    --keyboard-overlay-inset: 0px;
 }
 
 @supports (height: 100svh) {
@@ -298,9 +299,11 @@ body {
     .detail-container {
         position: fixed;
         top: 0;
+        bottom: var(--keyboard-overlay-inset);
         left: 0;
         width: 100%;
-        height: var(--app-height);
+        height: auto;
+        box-sizing: border-box;
         z-index: 150;
         transform: translateX(100%);
         transition: transform var(--motion-duration-long) var(--motion-emphasized-decelerate);
@@ -729,6 +732,11 @@ body {
 
     .detail-container {
         padding-top: 50px;
+    }
+
+    #note-detail {
+        padding-bottom: 24px;
+        scroll-padding-bottom: 24px;
     }
 }
 
