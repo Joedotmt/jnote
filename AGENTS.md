@@ -30,6 +30,7 @@ Users can save arbitrary Custom CSS. Treat the existing IDs and classes in `src/
 - Call `authWithOAuth2` from a non-async handler so Safari does not block the popup.
 - Only access `window`, `document`, `localStorage`, or authenticated PocketBase data from client lifecycle code or user-triggered methods.
 - Mobile panel history lives only in `+page.svelte`, through `pushState`/`replaceState` from `$app/navigation` and `page.state`; never call `history.pushState` directly, it fights the SvelteKit router.
+- Keep `src/lib/search.js` pure and DOM-free. `computeVisibleNotes()` defines the one list the pane renders, whether searching or browsing a folder; `visibleNotes` is its reactive view and `getVisibleNoteIds()` its live one. Anything that walks the list must go through one of those rather than refilter `notes` by folder.
 - Keep `src/lib/swipe.js` decision helpers pure and DOM-free; only the `swipeDismiss` action touches elements.
 - The service worker caches the app shell only. Never let it intercept the PocketBase server or the account site (`src/lib/serviceWorkerRules.js`); a stale note or session is worse than none.
 - Keep `interactive-widget=resizes-content` in `src/app.html`. Under `resizes-visual` or `overlays-content` the layout viewport stays full height, Chrome pans the visual viewport to reach the caret, and the top of a fixed pane ends up off-screen with nothing to scroll it back. Size mobile fixed panes with `top: var(--keyboard-visual-top)` and `bottom: var(--keyboard-overlay-inset)`, never a fixed `height`.

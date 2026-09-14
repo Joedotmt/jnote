@@ -449,6 +449,59 @@ body {
     white-space: nowrap;
 }
 
+.notes-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+/* The search field takes the header's place, so it undoes the header's label styling. */
+.notes-search {
+    gap: 8px;
+}
+
+.notes-search > i {
+    color: var(--on-surface-variant);
+    flex: 0 0 auto;
+}
+
+.notes-search-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 0;
+    border: 0;
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    outline: none;
+}
+
+.notes-search-input::placeholder {
+    color: var(--outline);
+}
+
+.notes-search-input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.note-list-folder {
+    flex: 0 0 auto;
+    max-width: 40%;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--surface-container);
+    color: var(--on-surface-variant);
+    font-size: 0.8em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 
 
 

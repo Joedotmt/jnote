@@ -1,5 +1,6 @@
 import PocketBase, { BaseAuthStore, LocalAuthStore } from 'pocketbase';
 import { SvelteSet } from 'svelte/reactivity';
+import { searchNotes } from './search.js';
 import {
   accountsHandoffProblem,
   accountsLoginUrl,
@@ -109,6 +110,8 @@ export class JNoteState {
   authMode = $state('unsupported');
   unlockBusy = $state(false);
 
+  searchOpen = $state(false);
+  searchQuery = $state('');
   foldersOpen = $state(false);
   detailOpen = $state(false);
   isMobileViewport = $state(false);
@@ -142,7 +145,9 @@ export class JNoteState {
 
   folders = $derived.by(() => buildFolderList(this.notes, this.clientOnlyFolders));
 
-  visibleNotes = $derived(this.notes.filter((note) => note.folder === this.currentFolder));
+  isSearching = $derived(this.searchQuery.trim().length > 0);
+  // The one list the pane renders; see computeVisibleNotes for what goes in it.
+  visibleNotes = $derived.by(() => this.computeVisibleNotes());
   currentNote = $derived(this.notes.find((note) => note.id === this.currentNoteId) ?? null);
   selectedCount = $derived(this.getSelectedNoteIds().length);
 
@@ -1123,10 +1128,41 @@ export class JNoteState {
     });
   }
 
+  /**
+   * A search spans every folder and ranks title matches first; otherwise the list is the
+   * current folder. Search reads what the user currently sees (a draft's title over the
+   * saved one) and whatever note text is already in memory. A plain method, so it is
+   * live wherever it is called and not only through the reactive `visibleNotes`.
+   */
+  computeVisibleNotes() {
+    if (this.searchQuery.trim()) {
+      return searchNotes(this.notes, this.searchQuery, (note) => ({
+        title: this.getDisplayTitle(note),
+        folder: note.folder,
+        content: this.getDraft(note.id)?.content ?? note.content ?? ''
+      }));
+    }
+    return this.notes.filter((note) => note.folder === this.currentFolder);
+  }
+
   getVisibleNoteIds() {
-    return this.notes
-      .filter((note) => note.folder === this.currentFolder)
-      .map((note) => note.id);
+    // The same list the pane renders, so keyboard navigation and select-all follow a
+    // search's results rather than the folder behind them.
+    return this.computeVisibleNotes().map((note) => note.id);
+  }
+
+  openSearch() {
+    this.closeContextMenu();
+    this.searchOpen = true;
+  }
+
+  setSearchQuery(query) {
+    this.searchQuery = query;
+  }
+
+  closeSearch() {
+    this.searchOpen = false;
+    this.searchQuery = '';
   }
 
   getSelectedNoteIds() {
@@ -1394,6 +1430,8 @@ export class JNoteState {
   }
 
   selectFolder(folder) {
+    // Picking a folder means browsing it, so any search in progress ends.
+    this.closeSearch();
     this.currentFolder = this.resolveFolderName(folder);
     this.clearNoteSelection();
     this.foldersOpen = false;
@@ -1707,6 +1745,8 @@ export class JNoteState {
   }
 
   createNewNote(folder = this.currentFolder) {
+    // A new note would not match the search, so end it to keep the note in view.
+    this.closeSearch();
     const targetFolder = this.resolveFolderName(folder);
     const note = {
       id: makeLocalNoteId(),

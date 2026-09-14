@@ -4,6 +4,40 @@
 
   let { app } = $props();
   const usesListbox = $derived(!app.renamingNoteId && app.visibleNotes.length > 0);
+  let searchInput = $state();
+
+  async function openSearch() {
+    app.openSearch();
+    await tick();
+    searchInput?.focus();
+  }
+
+  async function closeSearch() {
+    app.closeSearch();
+    await tick();
+    document.getElementById('open-search-btn')?.focus();
+  }
+
+  async function handleSearchKeydown(event) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      // First Escape clears the query, the second closes the field.
+      if (app.searchQuery) app.setSearchQuery('');
+      else closeSearch();
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'Enter') {
+      const firstId = app.getVisibleNoteIds()[0];
+      if (!firstId) return;
+      event.preventDefault();
+      if (event.key === 'Enter') {
+        app.selectNote(firstId);
+        await focusOpenedNote(firstId);
+      } else {
+        await focusRow(firstId);
+      }
+    }
+  }
   let dragPreviewElement = null;
   let dragPreviewFrame = null;
 
@@ -205,25 +239,65 @@
   inert={app.isMobileViewport && (app.foldersOpen || app.detailOpen) ? true : undefined}
   aria-hidden={app.isMobileViewport && (app.foldersOpen || app.detailOpen) ? 'true' : undefined}
 >
-  <div class="notes-header" id="current-folder-title">
-    <span>{app.currentFolder}</span>
-    {#if app.selectedCount > 1}
-      <span class="selection-count">{app.selectedCount} selected</span>
-    {/if}
-  </div>
+  {#if app.searchOpen}
+    <div class="notes-header notes-search" id="current-folder-title" role="search">
+      <i aria-hidden="true">search</i>
+      <input
+        bind:this={searchInput}
+        bind:value={app.searchQuery}
+        class="notes-search-input"
+        id="note-search-input"
+        type="search"
+        placeholder="Search all notes"
+        aria-label="Search notes"
+        autocomplete="off"
+        spellcheck="false"
+        onkeydown={handleSearchKeydown}
+      />
+      <button
+        class="icon-dialog-btn notes-search-close"
+        id="close-search-btn"
+        type="button"
+        aria-label="Close search"
+        title="Close search"
+        onclick={closeSearch}
+      >
+        <i aria-hidden="true">close</i>
+      </button>
+    </div>
+  {:else}
+    <div class="notes-header" id="current-folder-title">
+      <span>{app.currentFolder}</span>
+      <span class="notes-header-actions">
+        {#if app.selectedCount > 1}
+          <span class="selection-count">{app.selectedCount} selected</span>
+        {/if}
+        <button
+          class="icon-dialog-btn notes-search-open"
+          id="open-search-btn"
+          type="button"
+          aria-label="Search notes"
+          title="Search notes (/)"
+          onclick={openSearch}
+        >
+          <i aria-hidden="true">search</i>
+        </button>
+      </span>
+    </div>
+  {/if}
   <ul
     class="folder-list"
     id="notes-list"
     role={usesListbox ? 'listbox' : 'group'}
     aria-multiselectable={usesListbox ? 'true' : undefined}
     tabindex="-1"
-    aria-label={`Notes in ${app.currentFolder}`}
+    aria-label={app.isSearching ? 'Search results' : `Notes in ${app.currentFolder}`}
     onclick={clearFromBlankSpace}
     oncontextmenu={openBlankContextMenu}
     onkeydown={handleListKeydown}
   >
     {#if app.visibleNotes.length === 0}
-      <li class="empty-state" role="status">No notes</li>
+      <li class="empty-state" role="status">{app.isSearching ? 'No notes match' : 'No notes'}</li>
     {:else}
       {#each app.visibleNotes as note (note.id)}
         {#if note.id === app.renamingNoteId}
@@ -265,6 +339,9 @@
             ondragend={endDrag}
           >
             <span class="note-list-title">{app.getDisplayTitle(note) || '[untitled]'}</span>
+            {#if app.isSearching}
+              <span class="note-list-folder">{note.folder}</span>
+            {/if}
             {#if app.hasDraft(note.id)}
               <span class="unsaved-dot" title="Unsaved local changes" aria-hidden="true"></span>
             {/if}

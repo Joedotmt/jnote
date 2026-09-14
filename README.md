@@ -77,6 +77,7 @@ embeds it from collecting a session.
 - `src/lib/accounts.js` resolves the account site and server, and picks the session path.
 - `src/lib/crypto.js` contains the encryption-format primitives.
 - `src/lib/viewport.js` handles mobile keyboard viewport sizing. The viewport meta uses `interactive-widget=resizes-content`, so on Chrome the layout viewport shrinks with the keyboard and the fixed mobile panes, sized `top`/`bottom`, match the visible area. Browsers that ignore that hint pan the visual viewport to the caret instead; `--keyboard-visual-top` and `--keyboard-overlay-inset` pin the panes to wherever it lands.
+- `src/lib/search.js` filters and ranks notes for the search field; pure and tested. Titles are searched across every folder; note bodies only when already in memory, since they live in separate history records fetched one note at a time.
 - `src/lib/swipe.js` is the swipe-to-dismiss gesture for the mobile note pane and folder drawer; its decision helpers are pure and tested.
 
 On mobile, an open note pane or folder drawer also gets a history entry through

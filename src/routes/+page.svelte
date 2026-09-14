@@ -23,6 +23,14 @@
     }
   }
 
+  async function openSearchFromShortcut() {
+    // On a phone the list is behind whichever panel is open; bring it forward first.
+    if (app.isMobileViewport && (app.detailOpen || app.foldersOpen)) app.closeMobilePanels();
+    app.openSearch();
+    await tick();
+    document.getElementById('note-search-input')?.focus();
+  }
+
   async function closeMobilePanelsAndRestoreFocus() {
     const foldersWereOpen = app.foldersOpen;
     const noteId = app.currentNoteId;
@@ -132,7 +140,20 @@
         }
         return;
       }
+      // Ctrl/Cmd+K reaches search from anywhere, including mid-edit; "/" only outside text.
+      const searchShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k';
+      if (searchShortcut && !dialogOpen) {
+        event.preventDefault();
+        openSearchFromShortcut();
+        return;
+      }
       if (editableTarget) return;
+
+      if (event.key === '/' && !dialogOpen && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        openSearchFromShortcut();
+        return;
+      }
 
       if (event.key === 'Escape') {
         if (
