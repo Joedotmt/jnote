@@ -4,20 +4,27 @@ import test from 'node:test';
 import { getKeyboardInsets, getVerticalRevealDelta } from '../src/lib/viewport.js';
 
 test('keyboard insets distinguish an overlay from an already resized layout viewport', () => {
+  // Layout viewport left full height: the keyboard overlays 300px of it.
   assert.deepEqual(getKeyboardInsets(800, 800, 500), {
     stable: 300,
-    overlay: 300
+    overlay: 300,
+    visualTop: 0
   });
+  // Layout viewport shrunk with the keyboard (resizes-content): nothing left to overlay.
   assert.deepEqual(getKeyboardInsets(800, 500, 500), {
     stable: 300,
-    overlay: 0
+    overlay: 0,
+    visualTop: 0
   });
 });
 
 test('keyboard insets account for a panned visual viewport', () => {
+  // The browser scrolled the visual viewport 75px down to reach the caret. A fixed pane
+  // pinned top: 75px / bottom: 225px then covers exactly the visible 500px.
   assert.deepEqual(getKeyboardInsets(800, 800, 500, 75), {
     stable: 225,
-    overlay: 225
+    overlay: 225,
+    visualTop: 75
   });
 });
 

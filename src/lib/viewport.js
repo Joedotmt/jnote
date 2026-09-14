@@ -13,10 +13,22 @@ export function getVerticalRevealDelta(rect, bounds, gap = CARET_VIEWPORT_GAP) {
   return 0;
 }
 
+/**
+ * How far the keyboard intrudes, from the three heights a browser exposes.
+ * - stable:    below the pre-keyboard viewport; sizes content that keeps its layout height
+ * - overlay:   the layout viewport still covered by the keyboard; a fixed pane's `bottom`
+ * - visualTop: how far the browser has panned the visual viewport down inside the layout
+ *              viewport to reach the caret; a fixed pane's `top`, so the pane follows it
+ *              instead of losing its top edge above the visible area
+ * With interactive-widget=resizes-content the layout viewport itself shrinks, so overlay
+ * and visualTop are 0 and only `stable` is non-zero. Browsers that ignore that hint (iOS
+ * Safari) keep the layout viewport full height and report the pan through visualTop.
+ */
 export function getKeyboardInsets(stableHeight, layoutHeight, visualHeight, visualOffsetTop = 0) {
   return {
     stable: Math.max(0, Math.round(stableHeight - visualHeight - visualOffsetTop)),
-    overlay: Math.max(0, Math.round(layoutHeight - visualHeight - visualOffsetTop))
+    overlay: Math.max(0, Math.round(layoutHeight - visualHeight - visualOffsetTop)),
+    visualTop: Math.max(0, Math.round(visualOffsetTop))
   };
 }
 
@@ -103,11 +115,13 @@ export function bindAppViewportSize() {
 
     const keyboardInsets = keyboardLikely
       ? getKeyboardInsets(stableViewport.height, height, visualHeight, visualOffsetTop)
-      : { stable: 0, overlay: 0 };
+      : { stable: 0, overlay: 0, visualTop: 0 };
     // A WebView may resize its layout viewport as well. Fixed panels only need the
     // portion that still overlays that layout viewport, not the full stable inset.
     document.documentElement.style.setProperty('--keyboard-inset', `${keyboardInsets.stable}px`);
     document.documentElement.style.setProperty('--keyboard-overlay-inset', `${keyboardInsets.overlay}px`);
+    // Where the browser pans the visual viewport to the caret, fixed panes follow it.
+    document.documentElement.style.setProperty('--keyboard-visual-top', `${keyboardInsets.visualTop}px`);
     if (keyboardLikely) scheduleCaretReveal();
   }
 

@@ -9,6 +9,7 @@
     --app-height: 100vh;
     --keyboard-inset: 0px;
     --keyboard-overlay-inset: 0px;
+    --keyboard-visual-top: 0px;
 }
 
 @supports (height: 100svh) {
@@ -276,10 +277,13 @@ body {
 
     .folders-container {
         position: fixed;
-        top: 0;
+        top: var(--keyboard-visual-top);
+        bottom: var(--keyboard-overlay-inset);
         left: 0;
         width: 300px;
-        height: var(--app-height);
+        height: auto;
+        display: flex;
+        flex-direction: column;
         z-index: 200;
         transform: translateX(-100%);
         transition: transform var(--motion-duration-long) var(--motion-emphasized-decelerate);
@@ -297,7 +301,7 @@ body {
 
     .detail-container {
         position: fixed;
-        top: 0;
+        top: var(--keyboard-visual-top);
         bottom: var(--keyboard-overlay-inset);
         left: 0;
         width: 100%;

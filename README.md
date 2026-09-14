@@ -76,7 +76,7 @@ embeds it from collecting a session.
 - `src/lib/jnote.svelte.js` owns reactive application state and coordinates persistence and sync.
 - `src/lib/accounts.js` resolves the account site and server, and picks the session path.
 - `src/lib/crypto.js` contains the encryption-format primitives.
-- `src/lib/viewport.js` handles mobile keyboard viewport sizing.
+- `src/lib/viewport.js` handles mobile keyboard viewport sizing. The viewport meta uses `interactive-widget=resizes-content`, so on Chrome the layout viewport shrinks with the keyboard and the fixed mobile panes, sized `top`/`bottom`, match the visible area. Browsers that ignore that hint pan the visual viewport to the caret instead; `--keyboard-visual-top` and `--keyboard-overlay-inset` pin the panes to wherever it lands.
 - `src/lib/swipe.js` is the swipe-to-dismiss gesture for the mobile note pane and folder drawer; its decision helpers are pure and tested.
 
 On mobile, an open note pane or folder drawer also gets a history entry through

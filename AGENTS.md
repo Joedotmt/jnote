@@ -31,3 +31,4 @@ Users can save arbitrary Custom CSS. Treat the existing IDs and classes in `src/
 - Only access `window`, `document`, `localStorage`, or authenticated PocketBase data from client lifecycle code or user-triggered methods.
 - Mobile panel history lives only in `+page.svelte`, through `pushState`/`replaceState` from `$app/navigation` and `page.state`; never call `history.pushState` directly, it fights the SvelteKit router.
 - Keep `src/lib/swipe.js` decision helpers pure and DOM-free; only the `swipeDismiss` action touches elements.
+- Keep `interactive-widget=resizes-content` in `src/app.html`. Under `resizes-visual` or `overlays-content` the layout viewport stays full height, Chrome pans the visual viewport to reach the caret, and the top of a fixed pane ends up off-screen with nothing to scroll it back. Size mobile fixed panes with `top: var(--keyboard-visual-top)` and `bottom: var(--keyboard-overlay-inset)`, never a fixed `height`.
