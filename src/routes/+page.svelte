@@ -1,5 +1,7 @@
 <script>
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
+  import { pushState, replaceState } from '$app/navigation';
+  import { page } from '$app/state';
   import { jnote as app } from '$lib/jnote.svelte.js';
   import { bindAppViewportSize, isEditableElement } from '$lib/viewport.js';
   import EncryptionGate from '$lib/components/EncryptionGate.svelte';
@@ -34,6 +36,54 @@
       .find((element) => element.dataset.noteId === noteId);
     (row || document.getElementById('notes-list'))?.focus();
   }
+
+  // On mobile an open panel gets its own history entry, so the system back button closes
+  // the panel instead of leaving the app. SvelteKit's shallow routing keeps the URL as it
+  // is and gives us `page.state` as the history side of the picture.
+  const PANEL_STATE_KEY = 'jnoteMobilePanel';
+  let historyPanel = '';
+
+  function openPanel() {
+    if (!app.isMobileViewport) return '';
+    return app.foldersOpen ? 'folders' : app.detailOpen ? 'detail' : '';
+  }
+
+  // History -> app: back (or forward) changed page.state.
+  $effect(() => {
+    const panel = page.state?.[PANEL_STATE_KEY] ?? '';
+    untrack(() => {
+      historyPanel = panel;
+      if (!app.isMobileViewport || panel === openPanel()) return;
+      if (!panel) {
+        closeMobilePanelsAndRestoreFocus();
+      } else if (panel === 'folders') {
+        app.detailOpen = false;
+        app.foldersOpen = true;
+      } else if (panel === 'detail' && app.currentNoteId) {
+        app.foldersOpen = false;
+        app.detailOpen = true;
+      }
+    });
+  });
+
+  // App -> history: a panel opened or closed through the UI.
+  $effect(() => {
+    const panel = openPanel();
+    untrack(() => {
+      if (panel === historyPanel) return;
+      if (panel) {
+        const state = { ...page.state, [PANEL_STATE_KEY]: panel };
+        // Swapping one panel for another reuses the entry, so one back still reaches the list.
+        if (historyPanel) replaceState('', state);
+        else pushState('', state);
+        historyPanel = panel;
+      } else {
+        // Closed from the UI: drop the entry we added, so history matches what is shown.
+        historyPanel = '';
+        history.back();
+      }
+    });
+  });
 
   onMount(() => {
     const unbindViewport = bindAppViewportSize();

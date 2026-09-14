@@ -29,3 +29,5 @@ Users can save arbitrary Custom CSS. Treat the existing IDs and classes in `src/
 - `accountsOrigins` in `src/app.html` must stay in step with the account site's `BRIDGE_ORIGINS` + `HANDOFF_ORIGINS`.
 - Call `authWithOAuth2` from a non-async handler so Safari does not block the popup.
 - Only access `window`, `document`, `localStorage`, or authenticated PocketBase data from client lifecycle code or user-triggered methods.
+- Mobile panel history lives only in `+page.svelte`, through `pushState`/`replaceState` from `$app/navigation` and `page.state`; never call `history.pushState` directly, it fights the SvelteKit router.
+- Keep `src/lib/swipe.js` decision helpers pure and DOM-free; only the `swipeDismiss` action touches elements.

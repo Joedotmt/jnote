@@ -1,5 +1,6 @@
 <script>
   import { tick } from 'svelte';
+  import { swipeDismiss } from '$lib/swipe.js';
   import CloseDetailButton from './CloseDetailButton.svelte';
   import NoteEditor from './NoteEditor.svelte';
 
@@ -54,6 +55,11 @@
   inert={app.isMobileViewport && (!app.detailOpen || app.foldersOpen) ? true : undefined}
   aria-hidden={app.isMobileViewport && (!app.detailOpen || app.foldersOpen) ? 'true' : undefined}
   onkeydown={trapMobileDetailFocus}
+  use:swipeDismiss={{
+    direction: 'right',
+    enabled: () => app.isMobileViewport && app.detailOpen && !app.foldersOpen,
+    onDismiss: closeDetail
+  }}
 >
   <div id="note-detail">
     {#if !editorReady}

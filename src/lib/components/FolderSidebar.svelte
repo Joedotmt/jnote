@@ -1,5 +1,6 @@
 <script>
   import { tick } from 'svelte';
+  import { swipeDismiss } from '$lib/swipe.js';
   import InlineNameInput from './InlineNameInput.svelte';
 
   let { app } = $props();
@@ -48,13 +49,17 @@
     }
   }
 
-  async function closeDrawerFromKeyboard(event) {
-    if (event.key !== 'Escape' || window.innerWidth > 768 || !app.foldersOpen) return;
-    event.preventDefault();
-    event.stopPropagation();
+  async function closeDrawer() {
     app.closeFolders();
     await tick();
     document.getElementById('hamburger-btn')?.focus();
+  }
+
+  function closeDrawerFromKeyboard(event) {
+    if (event.key !== 'Escape' || window.innerWidth > 768 || !app.foldersOpen) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeDrawer();
   }
 
   function beginCreateFolder() {
@@ -118,6 +123,11 @@
   role="navigation"
   aria-label="Folders"
   onkeydown={handleSidebarKeydown}
+  use:swipeDismiss={{
+    direction: 'left',
+    enabled: () => app.isMobileViewport && app.foldersOpen,
+    onDismiss: closeDrawer
+  }}
 >
   <div class="sidebar-header">Folders</div>
   <div

@@ -77,6 +77,12 @@ embeds it from collecting a session.
 - `src/lib/accounts.js` resolves the account site and server, and picks the session path.
 - `src/lib/crypto.js` contains the encryption-format primitives.
 - `src/lib/viewport.js` handles mobile keyboard viewport sizing.
+- `src/lib/swipe.js` is the swipe-to-dismiss gesture for the mobile note pane and folder drawer; its decision helpers are pure and tested.
+
+On mobile, an open note pane or folder drawer also gets a history entry through
+SvelteKit's shallow routing (`+page.svelte`), so the system back button closes the
+panel and shows the list instead of leaving the app. Closing from the UI pops that
+entry again, so history always matches what is on screen.
 - `style.css` remains global so existing user-supplied Custom CSS selectors continue to work.
 
 ## GitHub Pages
