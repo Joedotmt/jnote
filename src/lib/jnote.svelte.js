@@ -1,5 +1,14 @@
-import PocketBase, { BaseAuthStore } from 'pocketbase';
+import PocketBase, { BaseAuthStore, LocalAuthStore } from 'pocketbase';
 import { SvelteSet } from 'svelte/reactivity';
+import {
+  accountsLoginUrl,
+  accountsOrigin,
+  isAccountsBridgeAvailable,
+  isAccountsHandoffAvailable,
+  pocketbaseUrl,
+  takeAccountsHandoffToken,
+  whenAccountsScriptSettled
+} from './accounts.js';
 import {
   createEncryptionMetadata,
   decryptStringWithState,
@@ -14,7 +23,6 @@ import {
   randomBase64
 } from './crypto.js';
 
-const POCKETBASE_URL = 'https://joemt.fly.dev';
 const DRAFTS_STORAGE_KEY = 'jnote.unsavedDrafts.v1';
 const LOCAL_NOTES_STORAGE_KEY = 'jnote.localNotes.v1';
 const PENDING_PUSHES_STORAGE_KEY = 'jnote.pendingPushes.v1';
@@ -93,6 +101,11 @@ export class JNoteState {
   unlockMode = $state('loading');
   encryptionError = $state('');
   accountError = $state('');
+  // How the session gets back here from the account site:
+  // 'bridge'      - read through its iframe, same-site origins only
+  // 'redirect'    - handed over in the URL fragment, any origin it serves
+  // 'unsupported' - the account site does not serve this origin, so sign-in cannot work
+  authMode = $state('unsupported');
   unlockBusy = $state(false);
 
   foldersOpen = $state(false);
@@ -171,13 +184,51 @@ export class JNoteState {
 
   get pb() {
     if (!this.client) {
-      const AccountStore = window.JoeAccounts?.AuthStore;
-      this.client = new PocketBase(POCKETBASE_URL, AccountStore ? new AccountStore() : new BaseAuthStore());
+      // Under the bridge the account site can be re-asked at any moment, so this app
+      // holds the session in memory only. A handed-over session cannot be re-asked for
+      // without another round trip, so it persists here instead.
+      const AccountStore = this.authMode === 'bridge' ? window.JoeAccounts?.AuthStore : null;
+      if (AccountStore) this.client = new PocketBase(pocketbaseUrl(), new AccountStore());
+      else this.client = new PocketBase(pocketbaseUrl(), new LocalAuthStore());
     }
     return this.client;
   }
 
+  get signInUrl() {
+    return accountsLoginUrl(window.location.href) || accountsOrigin();
+  }
+
+  /**
+   * Takes the session the account site put in the URL fragment and turns it into a
+   * working login. The token arrives alone, so the record comes from a refresh, which
+   * also proves to this app that the token is one the server still accepts.
+   */
+  async consumeAccountHandoff() {
+    const token = takeAccountsHandoffToken();
+    if (!token) return false;
+
+    this.pb.authStore.save(token, null);
+    try {
+      await this.pb.collection('users').authRefresh();
+      return true;
+    } catch (error) {
+      console.warn('The handed-over session was not accepted:', error);
+      this.pb.authStore.clear();
+      this.accountError = 'That sign-in did not carry through. Try signing in again.';
+      return false;
+    }
+  }
+
   async getAccountSession() {
+    if (this.authMode !== 'bridge') {
+      const store = this.pb.authStore;
+      if (!store.isValid || !store.record?.id) return null;
+      return { token: store.token, record: store.record };
+    }
+    return this.getBridgeSession();
+  }
+
+  async getBridgeSession() {
     const accounts = window.JoeAccounts;
     if (!accounts?.AuthStore || typeof accounts.getSession !== 'function') {
       throw new Error('The account service is unavailable.');
@@ -195,6 +246,8 @@ export class JNoteState {
 
   async refreshAccountSession() {
     if (!this.accountReady) return 'unchanged';
+    // Only the bridge has an external session that can change underneath this tab.
+    if (this.authMode !== 'bridge') return 'unchanged';
 
     let session;
     try {
@@ -202,7 +255,7 @@ export class JNoteState {
       this.accountError = '';
     } catch (error) {
       console.warn('Could not check the account session:', error);
-      this.accountError = 'Could not reach accounts.joe.mt. Try again when the account service is available.';
+      this.accountError = 'Could not reach the account service. Try again when it is available.';
       return 'unchanged';
     }
 
@@ -858,21 +911,46 @@ export class JNoteState {
     this.accountReady = false;
     this.customCss = this.readCustomCss();
     this.applyCustomCss();
-    try {
-      localStorage.removeItem('pocketbase_auth');
-    } catch (error) {
-      console.warn('Could not remove the old local account session:', error);
+
+    await whenAccountsScriptSettled();
+    // Prefer the bridge where it works, since it keeps the token out of the URL entirely.
+    if (isAccountsBridgeAvailable()) this.authMode = 'bridge';
+    else if (isAccountsHandoffAvailable()) this.authMode = 'redirect';
+    else this.authMode = 'unsupported';
+    // The auth store depends on the mode, so discard any client built before it was known.
+    this.client = null;
+
+    if (this.authMode === 'unsupported') {
+      this.accountError = `${accountsOrigin()} does not serve sessions to ${window.location.origin}.`;
+      this.unlockMode = 'auth-required';
+      this.accountReady = true;
+      return;
+    }
+
+    // Must run before anything reads the store: the account site has just sent the user
+    // back here with a session, and it is only offered once.
+    if (this.authMode === 'redirect') await this.consumeAccountHandoff();
+
+    if (this.authMode === 'bridge') {
+      // Under the bridge the account site is the only place a session may be stored.
+      try {
+        localStorage.removeItem('pocketbase_auth');
+      } catch (error) {
+        console.warn('Could not remove the old local account session:', error);
+      }
     }
 
     try {
       const session = await this.getAccountSession();
       this.accountError = '';
-      try {
-        for (const name of ['joe_mt_users_auth', 'joe_mt_users_auth_initialized']) {
-          document.cookie = `${name}=; Max-Age=0; Domain=joe.mt; Path=/; Secure; SameSite=Lax`;
+      if (this.authMode === 'bridge') {
+        try {
+          for (const name of ['joe_mt_users_auth', 'joe_mt_users_auth_initialized']) {
+            document.cookie = `${name}=; Max-Age=0; Domain=joe.mt; Path=/; Secure; SameSite=Lax`;
+          }
+        } catch (error) {
+          console.warn('Could not remove the old shared account cookies:', error);
         }
-      } catch (error) {
-        console.warn('Could not remove the old shared account cookies:', error);
       }
       if (!session) {
         this.pb.authStore.clear();
@@ -881,20 +959,27 @@ export class JNoteState {
       }
       this.pb.authStore.save(session.token, session.record);
       await this.loadCurrentUser();
-      if (this.currentUser.is_jnote_key_set && await this.unlockRememberedDevice()) {
-        await this.finishEncryptionUnlock();
-        return;
-      }
     } catch (error) {
       console.warn('Could not initialize encrypted notes:', error);
-      this.accountError = 'Could not check your account. Open accounts.joe.mt and try again.';
+      if (this.authMode !== 'bridge') {
+        // A rejected or expired handed-over token has to send the user back to sign in.
+        this.pb.authStore.clear();
+      }
+      this.accountError = `Could not check your account. Open ${accountsOrigin()} and try again.`;
       this.unlockMode = 'auth-required';
       return;
     } finally {
       this.accountReady = true;
     }
 
-    this.unlockMode = this.currentUser?.is_jnote_key_set ? 'unlock' : 'setup';
+    await this.continueAfterSignIn();
+  }
+
+  signOut() {
+    // Clear this app's copy first, then let the account site clear its own: signing out
+    // of one but not the other just signs you straight back in.
+    this.pb.authStore.clear();
+    window.location.href = window.JoeAccounts.logoutUrl(window.location.href);
   }
 
   async submitEncryptionKey(passphrase, rememberDevice) {

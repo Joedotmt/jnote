@@ -21,4 +21,11 @@ Users can save arbitrary Custom CSS. Treat the existing IDs and classes in `src/
 - Put UI behavior in the smallest relevant Svelte component.
 - Put shared reactive state and workflows in `src/lib/jnote.svelte.js`.
 - Keep cryptographic primitives independent of Svelte so they remain directly testable.
+- Keep `src/lib/accounts.js` free of Svelte and safe to import under plain Node.
+- Do not hardcode the PocketBase or account-site URL outside `src/lib/accounts.js`.
+- The account site is the only sign-in page. Never add a credential form or an in-app identity-provider picker to JNote.
+- Prefer the bridge where it applies, then the account site's redirect handoff. An origin the account site does not serve cannot sign in, and should say so rather than offering an alternative.
+- A handed-over token must be read once and stripped from the URL before any app code runs, and confirmed with `authRefresh` before it is trusted.
+- `accountsOrigins` in `src/app.html` must stay in step with the account site's `BRIDGE_ORIGINS` + `HANDOFF_ORIGINS`.
+- Call `authWithOAuth2` from a non-async handler so Safari does not block the popup.
 - Only access `window`, `document`, `localStorage`, or authenticated PocketBase data from client lifecycle code or user-triggered methods.

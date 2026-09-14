@@ -148,6 +148,12 @@
       <i aria-hidden="true">lock</i>
       <span>Forget remembered device</span>
     </button>
+    {#if app.authMode === 'redirect'}
+      <button class="settings-row-button" id="sign-out" type="button" onclick={() => app.signOut()}>
+        <i aria-hidden="true">logout</i>
+        <span>Sign out</span>
+      </button>
+    {/if}
   </div>
 </dialog>
 

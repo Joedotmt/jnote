@@ -1,20 +1,21 @@
 <script>
-  import { onMount, tick } from 'svelte';
+  import { tick } from 'svelte';
+  import { accountsOrigin } from '$lib/accounts.js';
 
   let { app } = $props();
   let passphrase = $state('');
-  let passphraseElement;
+  let passphraseElement = $state();
   let submittedChoice = $state('remember');
-  let signInUrl = $state('https://accounts.joe.mt/');
 
-  onMount(() => {
-    signInUrl = window.JoeAccounts?.loginUrl?.(window.location.href)
-      || `https://accounts.joe.mt/?redirect=${encodeURIComponent(window.location.href)}`;
-  });
+  const accountsLabel = new URL(accountsOrigin()).host;
+  // app.signInUrl is safe to read at any time; the account client throws on origins it
+  // does not serve rather than returning a usable link.
+  const signInUrl = $derived(app.signInUrl);
 
   const isSetup = $derived(app.unlockMode === 'setup');
   const isAuthRequired = $derived(app.unlockMode === 'auth-required');
   const isLoading = $derived(app.unlockMode === 'loading');
+  const canSignIn = $derived(isAuthRequired && app.authMode !== 'unsupported');
 
   $effect(() => {
     const mode = app.unlockMode;
@@ -65,7 +66,7 @@
 
     <p class="encryption-copy">
       {#if isAuthRequired}
-        JNote uses your accounts.joe.mt session.
+        JNote uses your {accountsLabel} session.
       {:else if isLoading}
         Checking this browser for a saved encryption key…
       {:else if isSetup}
@@ -74,23 +75,34 @@
         Enter your decryption key to decrypt your notes.
       {/if}
     </p>
-    <p class="encryption-warning">
-      {#if isAuthRequired}
-        Sign in with the account link below to return to JNote.
-      {:else}
-        If you forget this key, your notes cannot be recovered.
-      {/if}
-    </p>
+    {#if !isAuthRequired}
+      <p class="encryption-warning">If you forget this key, your notes cannot be recovered.</p>
+    {/if}
 
     {#if isAuthRequired}
       <p class="encryption-auth-copy" id="encryption-auth-copy">
-        Sign in at <a href={signInUrl}>accounts.joe.mt</a>, then return to JNote.
+        {#if canSignIn}
+          You will be taken to {accountsLabel} and brought straight back.
+        {:else}
+          Add this origin to the account site's allowlist, or open JNote from an origin
+          it already serves.
+        {/if}
       </p>
+
+      {#if canSignIn}
+        <div class="encryption-actions">
+          <a class="btn-primary encryption-submit encryption-signin" id="account-sign-in" href={signInUrl}>
+            Sign in at {accountsLabel}
+          </a>
+        </div>
+      {/if}
+
       {#if app.accountError}
-        <p class="encryption-error" role="alert">{app.accountError}</p>
+        <p class="encryption-error" id="account-error" role="alert">{app.accountError}</p>
       {/if}
     {/if}
 
+    {#if !isAuthRequired}
     <div class="field border label encryption-field">
       <input
         bind:this={passphraseElement}
@@ -131,5 +143,6 @@
           : isSetup ? 'Create and Unlock Once' : 'Unlock Once'}
       </button>
     </div>
+    {/if}
   </form>
 </div>

@@ -13,7 +13,38 @@
     />
     <link href="https://cdn.jsdelivr.net/npm/beercss@3.9.7/dist/cdn/beer.min.css" rel="stylesheet" />
     <script type="module" src="https://cdn.jsdelivr.net/npm/beercss@3.9.7/dist/cdn/beer.min.js"></script>
-    <script src="https://accounts.joe.mt/client.js"></script>
+    <script>
+      // Self-hosted deployments: set pocketbaseUrl here (or build with VITE_POCKETBASE_URL)
+      // and leave accountsOrigins empty to sign in to PocketBase directly.
+      // accountsOrigins must match BRIDGE_ORIGINS + HANDOFF_ORIGINS on the account site.
+      window.JNOTE_CONFIG = Object.assign(
+        {
+          accountsOrigin: 'https://accounts.joe.mt',
+          accountsOrigins: [
+            'https://joe.mt',
+            'https://notes.joe.mt',
+            'http://localhost:5173',
+            'http://localhost:4173',
+            'http://127.0.0.1:5173',
+            'http://127.0.0.1:4173'
+          ]
+        },
+        window.JNOTE_CONFIG
+      );
+      // The account site serves only its own origins, so other hosts skip the script.
+      window.__joeAccountsReady = new Promise((resolve) => {
+        const config = window.JNOTE_CONFIG;
+        if (!(config.accountsOrigins || []).includes(window.location.origin)) {
+          resolve(false);
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = config.accountsOrigin + '/client.js';
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.head.appendChild(script);
+      });
+    </script>
     %sveltekit.head%
     <style id="custom-css"></style>
     <script>
