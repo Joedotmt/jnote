@@ -934,7 +934,11 @@ export class JNoteState {
     this.client = null;
 
     if (this.authMode === 'unsupported') {
-      this.accountError = `${accountsOrigin()} does not serve sessions to ${window.location.origin}.`;
+      // Installed as an app and opened offline, the account script cannot load at all;
+      // that is a connection problem, not an allowlist one.
+      this.accountError = navigator.onLine === false
+        ? 'You appear to be offline. JNote needs a connection to check your account.'
+        : `${accountsOrigin()} does not serve sessions to ${window.location.origin}.`;
       this.unlockMode = 'auth-required';
       this.accountReady = true;
       return;

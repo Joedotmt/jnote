@@ -85,6 +85,22 @@ panel and shows the list instead of leaving the app. Closing from the UI pops th
 entry again, so history always matches what is on screen.
 - `style.css` remains global so existing user-supplied Custom CSS selectors continue to work.
 
+## Installing as an app
+
+JNote is a PWA. `src/routes/manifest.webmanifest/+server.js` generates the manifest
+at build time so its `start_url`, `scope` and icon paths follow the deployment's base
+path, and `static/icons/` holds the icons (regular, maskable, and an Apple touch
+icon). `src/service-worker.js` precaches the built app shell per version and caches
+the BeerCSS and Google Fonts assets as they are fetched, so the app opens instantly
+and still draws itself offline. Its rules live in `src/lib/serviceWorkerRules.js`,
+which is pure and tested.
+
+The worker never intercepts requests to the PocketBase server or the account site:
+notes and the session always come live, so a stale copy can never be shown as
+current. That also sets the limit of offline use today — the app shell loads, but
+checking the account needs a connection, and the unlock screen says so. SvelteKit
+registers the worker only in production builds, never under `npm run dev`.
+
 ## GitHub Pages
 
 The workflow in `.github/workflows/deploy.yml` checks, tests, builds, and publishes the static `build/` output. In the repository's **Settings → Pages**, select **GitHub Actions** as the publishing source.
