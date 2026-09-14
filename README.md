@@ -2,10 +2,12 @@
 
 JNote is a client-side encrypted notes app built with Svelte 5 and SvelteKit. Notes are encrypted in the browser and synchronized with the existing PocketBase backend.
 
-JNote uses the shared `joe.mt` account session. It loads
-`https://joe.mt/account/shared-auth.js` before the app starts, so deploy the
-matching account-site change before deploying JNote. The sign-in link returns
-users to their original JNote URL after authentication.
+JNote gets its PocketBase session from `accounts.joe.mt`. It loads
+`https://accounts.joe.mt/client.js` before the app starts, then requests the
+session through the account site's origin-checked bridge. JNote keeps the token
+in memory and asks the account site again when the tab regains focus. Deploy
+the account site and its client script before deploying JNote. The sign-in link
+returns users to their original JNote URL after authentication.
 
 ## Development
 

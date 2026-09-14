@@ -38,13 +38,28 @@
   onMount(() => {
     const unbindViewport = bindAppViewportSize();
     app.handleResize();
-    const authUserId = app.pb.authStore.record?.id || '';
-    const unsubscribeAuth = app.pb.authStore.onChange((_, record) => {
-      if ((record?.id || '') !== authUserId) {
-        app.unlockMode = 'auth-required';
-        window.location.reload();
+    let accountCheckInProgress = false;
+    let accountCheckRetryTimer;
+    let mounted = true;
+
+    const checkAccountSession = async () => {
+      if (!mounted || !app.accountReady || accountCheckInProgress) return;
+      accountCheckInProgress = true;
+      try {
+        const result = await app.refreshAccountSession();
+        if (!mounted) return;
+        if (result === 'changed') window.location.reload();
+        else if (result === 'deferred') {
+          accountCheckRetryTimer = window.setTimeout(checkAccountSession, 2000);
+        }
+      } finally {
+        accountCheckInProgress = false;
       }
-    });
+    };
+    const handleFocus = () => checkAccountSession();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') checkAccountSession();
+    };
 
     const handleKeydown = (event) => {
       if (event.defaultPrevented || event.isComposing) return;
@@ -114,16 +129,21 @@
     window.addEventListener('scroll', handleWindowScroll, true);
     window.addEventListener('resize', handleResize);
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     app.initialize();
 
     return () => {
-      unsubscribeAuth();
+      mounted = false;
+      window.clearTimeout(accountCheckRetryTimer);
       unbindViewport();
       window.removeEventListener('keydown', handleKeydown);
       window.removeEventListener('click', handleWindowClick);
       window.removeEventListener('scroll', handleWindowScroll, true);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       app.destroy();
     };
   });

@@ -5,10 +5,11 @@
   let passphrase = $state('');
   let passphraseElement;
   let submittedChoice = $state('remember');
-  let signInUrl = $state('https://joe.mt/account/');
+  let signInUrl = $state('https://accounts.joe.mt/');
 
   onMount(() => {
-    signInUrl = `https://joe.mt/account/?redirect=${encodeURIComponent(window.location.href)}`;
+    signInUrl = window.JoeAccounts?.loginUrl?.(window.location.href)
+      || `https://accounts.joe.mt/?redirect=${encodeURIComponent(window.location.href)}`;
   });
 
   const isSetup = $derived(app.unlockMode === 'setup');
@@ -64,7 +65,7 @@
 
     <p class="encryption-copy">
       {#if isAuthRequired}
-        JNote uses your joe.mt account session.
+        JNote uses your accounts.joe.mt session.
       {:else if isLoading}
         Checking this browser for a saved encryption key…
       {:else if isSetup}
@@ -83,8 +84,11 @@
 
     {#if isAuthRequired}
       <p class="encryption-auth-copy" id="encryption-auth-copy">
-        Sign in at <a href={signInUrl}>joe.mt/account</a>, then return to JNote.
+        Sign in at <a href={signInUrl}>accounts.joe.mt</a>, then return to JNote.
       </p>
+      {#if app.accountError}
+        <p class="encryption-error" role="alert">{app.accountError}</p>
+      {/if}
     {/if}
 
     <div class="field border label encryption-field">

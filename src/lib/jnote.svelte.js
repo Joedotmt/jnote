@@ -92,6 +92,7 @@ export class JNoteState {
   noteLoadError = $state('');
   unlockMode = $state('loading');
   encryptionError = $state('');
+  accountError = $state('');
   unlockBusy = $state(false);
 
   foldersOpen = $state(false);
@@ -166,13 +167,70 @@ export class JNoteState {
   activeDirectMoveNoteIds = new Set();
   noteLoadRequest = 0;
   initialized = false;
+  accountReady = false;
 
   get pb() {
     if (!this.client) {
-      const SharedStore = window.JoeSharedAuth?.Store;
-      this.client = new PocketBase(POCKETBASE_URL, SharedStore ? new SharedStore() : new BaseAuthStore());
+      const AccountStore = window.JoeAccounts?.AuthStore;
+      this.client = new PocketBase(POCKETBASE_URL, AccountStore ? new AccountStore() : new BaseAuthStore());
     }
     return this.client;
+  }
+
+  async getAccountSession() {
+    const accounts = window.JoeAccounts;
+    if (!accounts?.AuthStore || typeof accounts.getSession !== 'function') {
+      throw new Error('The account service is unavailable.');
+    }
+
+    const session = await accounts.getSession();
+    if (
+      session !== null
+      && (!session?.token || !session?.record?.id || session.record.collectionName !== 'users')
+    ) {
+      throw new Error('The account service returned an invalid session.');
+    }
+    return session;
+  }
+
+  async refreshAccountSession() {
+    if (!this.accountReady) return 'unchanged';
+
+    let session;
+    try {
+      session = await this.getAccountSession();
+      this.accountError = '';
+    } catch (error) {
+      console.warn('Could not check the account session:', error);
+      this.accountError = 'Could not reach accounts.joe.mt. Try again when the account service is available.';
+      return 'unchanged';
+    }
+
+    const nextUserId = session?.record?.id || '';
+    const currentUserId = this.getCurrentUserId();
+    if (nextUserId === currentUserId) {
+      if (session && session.token !== this.pb.authStore.token) {
+        this.pb.authStore.save(session.token, session.record);
+      }
+      return 'unchanged';
+    }
+
+    if (this.beforeUnloadMessage()) return 'deferred';
+
+    if (this.encryptionState) {
+      try {
+        await this.saveLocalStoresWithState(this.encryptionState);
+      } catch (error) {
+        console.warn('Could not save encrypted local notes before switching accounts:', error);
+        this.accountError = 'Could not save local notes before switching accounts.';
+        return 'deferred';
+      }
+    }
+
+    this.unlockMode = 'auth-required';
+    if (session) this.pb.authStore.save(session.token, session.record);
+    else this.pb.authStore.clear();
+    return 'changed';
   }
 
   getCurrentUserId() {
@@ -797,10 +855,31 @@ export class JNoteState {
   async initialize() {
     if (this.initialized) return;
     this.initialized = true;
+    this.accountReady = false;
     this.customCss = this.readCustomCss();
     this.applyCustomCss();
+    try {
+      localStorage.removeItem('pocketbase_auth');
+    } catch (error) {
+      console.warn('Could not remove the old local account session:', error);
+    }
 
     try {
+      const session = await this.getAccountSession();
+      this.accountError = '';
+      try {
+        for (const name of ['joe_mt_users_auth', 'joe_mt_users_auth_initialized']) {
+          document.cookie = `${name}=; Max-Age=0; Domain=joe.mt; Path=/; Secure; SameSite=Lax`;
+        }
+      } catch (error) {
+        console.warn('Could not remove the old shared account cookies:', error);
+      }
+      if (!session) {
+        this.pb.authStore.clear();
+        this.unlockMode = 'auth-required';
+        return;
+      }
+      this.pb.authStore.save(session.token, session.record);
       await this.loadCurrentUser();
       if (this.currentUser.is_jnote_key_set && await this.unlockRememberedDevice()) {
         await this.finishEncryptionUnlock();
@@ -808,8 +887,11 @@ export class JNoteState {
       }
     } catch (error) {
       console.warn('Could not initialize encrypted notes:', error);
+      this.accountError = 'Could not check your account. Open accounts.joe.mt and try again.';
       this.unlockMode = 'auth-required';
       return;
+    } finally {
+      this.accountReady = true;
     }
 
     this.unlockMode = this.currentUser?.is_jnote_key_set ? 'unlock' : 'setup';
