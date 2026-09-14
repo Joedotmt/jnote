@@ -63,11 +63,14 @@ export function bindAppViewportSize() {
     if (!caretRect) return;
 
     const containerRect = scrollContainer.getBoundingClientRect();
+    const toolbarBottom = scrollContainer
+      .querySelector('.note-actions')
+      ?.getBoundingClientRect().bottom || 0;
     const visualViewport = window.visualViewport;
     const viewportTop = visualViewport?.offsetTop || 0;
     const viewportBottom = viewportTop + (visualViewport?.height || window.innerHeight);
     const delta = getVerticalRevealDelta(caretRect, {
-      top: Math.max(containerRect.top, viewportTop),
+      top: Math.max(containerRect.top, viewportTop, toolbarBottom),
       bottom: Math.min(containerRect.bottom, viewportBottom)
     });
 

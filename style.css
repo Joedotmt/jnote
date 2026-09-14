@@ -496,8 +496,7 @@ body {
 
 .folder-item:focus-visible,
 .folder-item.focused:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: -3px;
+    border-radius: 3px;
 }
 
 .folder-item.active {
@@ -731,11 +730,12 @@ body {
     }
 
     .detail-container {
-        padding-top: 50px;
+        padding-top: 0;
     }
 
     #note-detail {
-        padding-bottom: 24px;
+        padding: 12px 12px 24px;
+        scroll-padding-top: 64px;
         scroll-padding-bottom: 24px;
     }
 }
@@ -1064,7 +1064,6 @@ body {
 .btn-secondary {
     background: transparent;
     color: var(--on-surface-variant);
-    border: 1px solid var(--outline);
 }
 
 .btn-secondary:hover {
@@ -1131,6 +1130,48 @@ button:focus-visible {
     background: var(--surface-bright);
 }
 
+@media (max-width: 768px) {
+    .note-actions {
+        position: sticky;
+        top: 12px;
+        z-index: 9;
+        min-width: 0;
+        min-height: 40px;
+        margin: 0 0 12px 48px;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-start;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        scrollbar-width: none;
+    }
+
+    .detail-container::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        left: 0;
+        z-index: 8;
+        height: 64px;
+        background: var(--background);
+        pointer-events: none;
+    }
+
+    .note-actions::-webkit-scrollbar {
+        display: none;
+    }
+
+    .note-actions button {
+        flex: 0 0 auto;
+    }
+
+    .note-actions button:focus-visible {
+        outline-offset: -3px;
+    }
+}
+
 .note-title,
 .note-detail-content.editable {
     background: transparent;
@@ -1150,8 +1191,6 @@ button:focus-visible {
 
 .note-title:focus-visible,
 .note-detail-content.editable:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 4px;
     border-radius: 3px;
 }
 
