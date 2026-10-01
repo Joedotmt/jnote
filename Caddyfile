@@ -1,0 +1,12 @@
+:8080 {
+	root * /srv
+	encode zstd gzip
+
+	@immutable path /_app/immutable/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+	@documents path / /index.html /404.html /s/* /service-worker.js /manifest.webmanifest
+	header @documents Cache-Control "no-cache"
+
+	try_files {path} /404.html
+	file_server
+}

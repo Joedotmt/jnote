@@ -1,197 +1,120 @@
-const ENCRYPTED_VALUE_VERSION = 1;
-const ENCRYPTION_ALGORITHM = 'AES-GCM';
-const KDF_ALGORITHM = 'PBKDF2';
-const KDF_HASH = 'SHA-256';
-const KDF_ITERATIONS = 310000;
-const AES_KEY_LENGTH = 256;
-const ENCRYPTION_SALT_BYTES = 16;
-const ENCRYPTION_IV_BYTES = 12;
-
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
-
+// v2 only. All encrypted values authenticate an explicit, canonical object context.
+export const FORMAT = 'jnote.v2';
+export const PROTOCOL = 2;
+export const KDF_ITERATIONS = 310000;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder('utf-8', { fatal: true });
 export function assertWebCryptoAvailable() {
-  if (!globalThis.crypto?.subtle || !globalThis.crypto?.getRandomValues) {
-    throw new Error('Web Crypto is unavailable. Open this app over HTTPS or localhost.');
-  }
+	if (!globalThis.crypto?.subtle) throw new Error('Web Crypto requires HTTPS or localhost.');
 }
-
-export function createEncryptionMetadata(salt = randomBase64(ENCRYPTION_SALT_BYTES)) {
-  return {
-    v: ENCRYPTED_VALUE_VERSION,
-    alg: ENCRYPTION_ALGORITHM,
-    kdf: {
-      alg: KDF_ALGORITHM,
-      hash: KDF_HASH,
-      iterations: KDF_ITERATIONS,
-      salt
-    }
-  };
+export function randomBytes(length = 32) {
+	assertWebCryptoAvailable();
+	return crypto.getRandomValues(new Uint8Array(length));
 }
-
-export function normalizeEncryptionMetadata(metadata) {
-  if (!metadata || metadata.v !== ENCRYPTED_VALUE_VERSION || metadata.alg !== ENCRYPTION_ALGORITHM) {
-    return null;
-  }
-  if (metadata.kdf?.alg !== KDF_ALGORITHM || metadata.kdf?.hash !== KDF_HASH) return null;
-  if (!Number.isInteger(metadata.kdf?.iterations) || metadata.kdf.iterations <= 0) return null;
-  if (typeof metadata.kdf?.salt !== 'string' || !metadata.kdf.salt) return null;
-
-  return {
-    v: metadata.v,
-    alg: metadata.alg,
-    kdf: {
-      alg: metadata.kdf.alg,
-      hash: metadata.kdf.hash,
-      iterations: metadata.kdf.iterations,
-      salt: metadata.kdf.salt
-    }
-  };
+export function newId() {
+	return crypto.randomUUID();
 }
-
-export async function deriveEncryptionKey(passphrase, metadata, options = {}) {
-  assertWebCryptoAvailable();
-
-  const baseKey = await globalThis.crypto.subtle.importKey(
-    'raw',
-    textEncoder.encode(passphrase),
-    KDF_ALGORITHM,
-    false,
-    ['deriveKey']
-  );
-
-  return globalThis.crypto.subtle.deriveKey(
-    {
-      name: KDF_ALGORITHM,
-      salt: base64ToBytes(metadata.kdf.salt),
-      iterations: metadata.kdf.iterations,
-      hash: metadata.kdf.hash
-    },
-    baseKey,
-    { name: ENCRYPTION_ALGORITHM, length: AES_KEY_LENGTH },
-    Boolean(options.extractable),
-    ['encrypt', 'decrypt']
-  );
+export function encodeBytes(bytes) {
+	let binary = '';
+	for (let index = 0; index < bytes.length; index += 32768)
+		binary += String.fromCharCode(...bytes.subarray(index, index + 32768));
+	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-
-export async function importRememberedKey(rawKey) {
-  assertWebCryptoAvailable();
-
-  return globalThis.crypto.subtle.importKey(
-    'raw',
-    base64ToBytes(rawKey),
-    { name: ENCRYPTION_ALGORITHM, length: AES_KEY_LENGTH },
-    false,
-    ['encrypt', 'decrypt']
-  );
+export function decodeBytes(value, length) {
+	if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value))
+		throw new Error('Invalid encoded bytes.');
+	const bytes = Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), (c) =>
+		c.charCodeAt(0)
+	);
+	if ((length && bytes.length !== length) || encodeBytes(bytes) !== value)
+		throw new Error('Invalid encoded length.');
+	return bytes;
 }
-
-export async function exportKey(key) {
-  const rawKey = await globalThis.crypto.subtle.exportKey('raw', key);
-  return bytesToBase64(new Uint8Array(rawKey));
+export function context(purpose, scope, objectId, revision = '', generation = 1) {
+	if (
+		!purpose ||
+		!scope?.owner ||
+		!scope?.epoch ||
+		!objectId ||
+		!Number.isSafeInteger(generation) ||
+		generation < 1
+	) {
+		throw new Error('Missing authenticated object identity.');
+	}
+	return [FORMAT, purpose, scope.owner, scope.epoch, objectId, revision, generation];
 }
-
-export async function encryptStringWithState(plaintext, state) {
-  if (!state) throw new Error('Notes are locked.');
-  assertWebCryptoAvailable();
-
-  const iv = globalThis.crypto.getRandomValues(new Uint8Array(ENCRYPTION_IV_BYTES));
-  const ciphertext = await globalThis.crypto.subtle.encrypt(
-    { name: ENCRYPTION_ALGORITHM, iv },
-    state.key,
-    textEncoder.encode(String(plaintext ?? ''))
-  );
-
-  return JSON.stringify({
-    ...state.metadata,
-    iv: bytesToBase64(iv),
-    ct: bytesToBase64(new Uint8Array(ciphertext))
-  });
+export async function importKey(bytes, extractable = false) {
+	if (bytes.length !== 32) throw new Error('AES-256 key required.');
+	return crypto.subtle.importKey('raw', bytes, 'AES-GCM', extractable, ['encrypt', 'decrypt']);
 }
-
-export async function decryptStringWithState(encryptedValue, state) {
-  if (!state) throw new Error('Notes are locked.');
-  assertWebCryptoAvailable();
-
-  const envelope = parseEncryptedEnvelope(encryptedValue);
-  if (envelope.kdf.salt !== state.metadata.kdf.salt) {
-    throw new Error('Encrypted data was created with a different key salt.');
-  }
-
-  const plaintext = await globalThis.crypto.subtle.decrypt(
-    { name: ENCRYPTION_ALGORITHM, iv: base64ToBytes(envelope.iv) },
-    state.key,
-    base64ToBytes(envelope.ct)
-  );
-
-  return textDecoder.decode(plaintext);
+export async function generateKey(extractable = true) {
+	return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, extractable, [
+		'encrypt',
+		'decrypt'
+	]);
 }
-
-export function parseEncryptedEnvelope(value) {
-  let envelope;
-  try {
-    envelope = JSON.parse(value);
-  } catch {
-    throw new Error('Encrypted value is not a valid encryption envelope.');
-  }
-
-  const metadata = normalizeEncryptionMetadata(envelope);
-  if (!metadata || typeof envelope.iv !== 'string' || typeof envelope.ct !== 'string') {
-    throw new Error('Encrypted value is missing required encryption metadata.');
-  }
-
-  return { ...metadata, iv: envelope.iv, ct: envelope.ct };
+export function createKdf() {
+	return {
+		name: 'PBKDF2',
+		hash: 'SHA-256',
+		iterations: KDF_ITERATIONS,
+		salt: encodeBytes(randomBytes(16))
+	};
 }
-
-export function extractEncryptionMetadata(value) {
-  if (!isEncryptedEnvelopeString(value)) return null;
-
-  try {
-    return normalizeEncryptionMetadata(JSON.parse(value));
-  } catch {
-    return null;
-  }
+export async function deriveUnlockKey(passphrase, kdf) {
+	if (kdf?.name !== 'PBKDF2' || kdf.hash !== 'SHA-256' || kdf.iterations !== KDF_ITERATIONS) {
+		throw new Error('Update/reset required: unsupported key derivation.');
+	}
+	const salt = decodeBytes(kdf.salt, 16);
+	const key = await crypto.subtle.importKey('raw', encoder.encode(passphrase), 'PBKDF2', false, [
+		'deriveKey'
+	]);
+	return crypto.subtle.deriveKey(
+		{ name: 'PBKDF2', hash: 'SHA-256', iterations: kdf.iterations, salt },
+		key,
+		{ name: 'AES-GCM', length: 256 },
+		false,
+		['encrypt', 'decrypt']
+	);
 }
-
-export function isEncryptedEnvelopeString(value) {
-  if (typeof value !== 'string' || !value.trim().startsWith('{')) return false;
-
-  try {
-    const parsed = JSON.parse(value);
-    return Boolean(
-      normalizeEncryptionMetadata(parsed)
-      && typeof parsed.iv === 'string'
-      && typeof parsed.ct === 'string'
-    );
-  } catch {
-    return false;
-  }
+export function validateEnvelope(value) {
+	if (value?.v !== 2 || value.alg !== 'A256GCM')
+		throw new Error('Update/reset required: unsupported encrypted format.');
+	decodeBytes(value.iv, 12);
+	if (decodeBytes(value.ct).length < 16) throw new Error('Invalid ciphertext.');
+	return value;
 }
-
-export function randomBase64(byteLength) {
-  assertWebCryptoAvailable();
-  return bytesToBase64(globalThis.crypto.getRandomValues(new Uint8Array(byteLength)));
+export async function encryptBytes(bytes, key, aad) {
+	const iv = randomBytes(12);
+	const ct = await crypto.subtle.encrypt(
+		{ name: 'AES-GCM', iv, additionalData: encoder.encode(JSON.stringify(aad)) },
+		key,
+		bytes
+	);
+	return { v: 2, alg: 'A256GCM', iv: encodeBytes(iv), ct: encodeBytes(new Uint8Array(ct)) };
 }
-
-export function bytesToBase64(bytes) {
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
-  }
-  return btoa(binary);
+export async function decryptBytes(value, key, aad) {
+	validateEnvelope(value);
+	return new Uint8Array(
+		await crypto.subtle.decrypt(
+			{
+				name: 'AES-GCM',
+				iv: decodeBytes(value.iv, 12),
+				additionalData: encoder.encode(JSON.stringify(aad))
+			},
+			key,
+			decodeBytes(value.ct)
+		)
+	);
 }
-
-export function base64ToBytes(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
+export function encryptObject(value, key, aad) {
+	return encryptBytes(encoder.encode(JSON.stringify(value)), key, aad);
 }
-
-export const encryptionFormat = {
-  version: ENCRYPTED_VALUE_VERSION,
-  algorithm: ENCRYPTION_ALGORITHM
-};
+export async function decryptObject(value, key, aad) {
+	const bytes = await decryptBytes(value, key, aad);
+	try {
+		return JSON.parse(decoder.decode(bytes));
+	} catch {
+		throw new Error('Authenticated payload is malformed.');
+	}
+}

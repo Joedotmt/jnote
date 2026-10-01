@@ -13,21 +13,17 @@ const DEFAULT_ACCOUNTS_ORIGIN = 'https://accounts.joe.mt';
 const buildEnv = import.meta.env || {};
 
 function runtimeConfig() {
-  return (typeof window === 'undefined' ? null : window.JNOTE_CONFIG) || {};
+	return (typeof window === 'undefined' ? null : window.JNOTE_CONFIG) || {};
 }
 
 /** The PocketBase instance JNote reads and writes notes through. */
 export function pocketbaseUrl() {
-  return runtimeConfig().pocketbaseUrl
-    || buildEnv.VITE_POCKETBASE_URL
-    || DEFAULT_POCKETBASE_URL;
+	return runtimeConfig().pocketbaseUrl || buildEnv.VITE_POCKETBASE_URL || DEFAULT_POCKETBASE_URL;
 }
 
 /** The account site that owns the session. */
 export function accountsOrigin() {
-  return runtimeConfig().accountsOrigin
-    || buildEnv.VITE_ACCOUNTS_ORIGIN
-    || DEFAULT_ACCOUNTS_ORIGIN;
+	return runtimeConfig().accountsOrigin || buildEnv.VITE_ACCOUNTS_ORIGIN || DEFAULT_ACCOUNTS_ORIGIN;
 }
 
 /**
@@ -36,19 +32,19 @@ export function accountsOrigin() {
  * ever answers same-site callers.
  */
 export function isAccountsBridgeAvailable() {
-  if (typeof window === 'undefined') return false;
-  const accounts = window.JoeAccounts;
-  if (!accounts?.AuthStore || typeof accounts.getSession !== 'function') return false;
-  // A current account script says outright which path this origin is on. Probing
-  // loginUrl cannot tell them apart, since it succeeds for handoff origins too.
-  if (typeof accounts.canBridge === 'function') return accounts.canBridge();
-  // An older one only reveals it by throwing for an origin it does not serve.
-  try {
-    accounts.loginUrl(window.location.href);
-    return true;
-  } catch (error) {
-    return false;
-  }
+	if (typeof window === 'undefined') return false;
+	const accounts = window.JoeAccounts;
+	if (!accounts?.AuthStore || typeof accounts.getSession !== 'function') return false;
+	// A current account script says outright which path this origin is on. Probing
+	// loginUrl cannot tell them apart, since it succeeds for handoff origins too.
+	if (typeof accounts.canBridge === 'function') return accounts.canBridge();
+	// An older one only reveals it by throwing for an origin it does not serve.
+	try {
+		accounts.loginUrl(window.location.href);
+		return true;
+	} catch (error) {
+		return false;
+	}
 }
 
 /**
@@ -57,21 +53,21 @@ export function isAccountsBridgeAvailable() {
  * comes back in the URL because an iframe here would only see partitioned storage.
  */
 export function isAccountsHandoffAvailable() {
-  if (typeof window === 'undefined') return false;
-  const accounts = window.JoeAccounts;
-  if (typeof accounts?.canHandoff !== 'function') return false;
-  return accounts.canHandoff();
+	if (typeof window === 'undefined') return false;
+	const accounts = window.JoeAccounts;
+	if (typeof accounts?.canHandoff !== 'function') return false;
+	return accounts.canHandoff();
 }
 
 /** The session the account site just handed over, readable once. '' when there is none. */
 export function takeAccountsHandoffToken() {
-  if (typeof window === 'undefined') return '';
-  try {
-    return window.JoeAccounts?.takeHandoffToken?.() || '';
-  } catch (error) {
-    console.warn('Could not read the handed-over session:', error);
-    return '';
-  }
+	if (typeof window === 'undefined') return '';
+	try {
+		return window.__jnoteTakeHandoffToken?.() || window.JoeAccounts?.takeHandoffToken?.() || '';
+	} catch (error) {
+		console.warn('Could not read the handed-over session:', error);
+		return '';
+	}
 }
 
 /**
@@ -79,32 +75,32 @@ export function takeAccountsHandoffToken() {
  * there was none: 'malformed', 'wrong-type', or 'expired'.
  */
 export function accountsHandoffProblem() {
-  if (typeof window === 'undefined') return '';
-  try {
-    return window.JoeAccounts?.handoffProblem?.() || '';
-  } catch (error) {
-    return '';
-  }
+	if (typeof window === 'undefined') return '';
+	try {
+		return window.__jnoteHandoffProblem?.() || window.JoeAccounts?.handoffProblem?.() || '';
+	} catch (error) {
+		return '';
+	}
 }
 
 /** Resolves once the optional account script has loaded, or immediately when it is absent. */
 export async function whenAccountsScriptSettled() {
-  if (typeof window === 'undefined') return false;
-  try {
-    await window.__joeAccountsReady;
-  } catch (error) {
-    console.warn('Could not load the account script:', error);
-  }
-  return isAccountsBridgeAvailable() || isAccountsHandoffAvailable();
+	if (typeof window === 'undefined') return false;
+	try {
+		await window.__joeAccountsReady;
+	} catch (error) {
+		console.warn('Could not load the account script:', error);
+	}
+	return isAccountsBridgeAvailable() || isAccountsHandoffAvailable();
 }
 
 /** A sign-in link back to this exact page, or '' when no account-site path applies. */
 export function accountsLoginUrl(returnTo) {
-  // Both paths sign in at the account site; only the way back differs.
-  if (!isAccountsBridgeAvailable() && !isAccountsHandoffAvailable()) return '';
-  try {
-    return window.JoeAccounts.loginUrl(returnTo);
-  } catch (error) {
-    return '';
-  }
+	// Both paths sign in at the account site; only the way back differs.
+	if (!isAccountsBridgeAvailable() && !isAccountsHandoffAvailable()) return '';
+	try {
+		return window.JoeAccounts.loginUrl(returnTo);
+	} catch (error) {
+		return '';
+	}
 }

@@ -1,0 +1,24 @@
+diff --git a/client.js b/client.js
+index 9b2f81f..5553f3b 100644
+--- a/client.js
++++ b/client.js
+@@ -9,6 +9,7 @@
+   // Must match BRIDGE_ORIGINS and HANDOFF_ORIGINS in the account site's session.js.
+   const BRIDGE_ORIGINS = new Set(['https://joe.mt', 'https://notes.joe.mt']);
+   const HANDOFF_ORIGINS = new Set([
++    'https://jnote-v2-joedotmt.fly.dev',
+     'http://localhost:5173',
+     'http://localhost:4173',
+     'http://127.0.0.1:5173',
+diff --git a/session.js b/session.js
+index 8146ebd..6eb678d 100644
+--- a/session.js
++++ b/session.js
+@@ -12,6 +12,7 @@
+   // obtain the user's session without any further prompt, so keep the list short and
+   // limited to apps under this operator's control.
+   const HANDOFF_ORIGINS = new Set([
++    'https://jnote-v2-joedotmt.fly.dev',
+     'http://localhost:5173',
+     'http://localhost:4173',
+     'http://127.0.0.1:5173',

@@ -1,0 +1,13 @@
+**
+!Dockerfile
+!Caddyfile
+!package.json
+!package-lock.json
+!svelte.config.js
+!vite.config.js
+!jsconfig.json
+!style.css
+!src/
+!src/**
+!static/
+!static/**

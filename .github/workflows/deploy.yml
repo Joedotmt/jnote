@@ -34,6 +34,14 @@ jobs:
         run: npm run check
       - name: Test
         run: npm test
+      - name: Install pinned PocketBase for disposable integration tests
+        run: npm run backend:install
+      - name: Backend and cutover integration
+        run: |
+          npm run test:backend
+          npm run test:cutover
+        env:
+          POCKETBASE_BIN: ${{ github.workspace }}/backend/.bin/pocketbase
       - name: Build
         run: npm run build
         env:

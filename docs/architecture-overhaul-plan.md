@@ -2,11 +2,11 @@
 
 Audience: the Codex agent implementing this work. Follow the decisions, task order, and acceptance checks below. Update task status and record concrete discoveries in this document as implementation proceeds.
 
-Current request: update this document only. Do not modify application behavior, provision collections, delete records, or deploy during this documentation task. When the user subsequently asks to implement this plan, execute it within the authorization recorded below.
+Current request: execute this plan. The prior documentation-only task has ended. Implementation is authorized within the boundaries below. Local implementation, production deployment/reset receipt and validation evidence are recorded in section 12. The frontend is deployed on a separate Fly app using the existing `joemt` database; account-site publication and browser acceptance remain outstanding.
 
 **1. User decisions and authorization**
 
-- The user is the only current JNote user and has exported all their notes.
+- The user has exported their notes. The initial single-owner assumption was corrected by live inspection: JNote records belonged to three owner IDs, while the account service contained 11 users. The user explicitly approved resetting all JNote records for all three owners and preserving every account and unrelated collection.
 - The user explicitly permits deleting all existing `jnote` and `jnote_content` records for this overhaul, including histories and soft-deleted records. This is a one-time hard reset. Routine deletion in the rebuilt application must still be a soft delete.
 - The user permits creating new JNote collections and redesigning JNote schemas as needed. Reuse `jnote` and `jnote_content` and add the supporting collections below.
 - Use a clean v2 start. Do not build ciphertext migration, mixed v1/v2 operation, legacy password/key conversion, or legacy note-store import.
@@ -24,19 +24,19 @@ Defer account sharing, public editing, automatic live publication, password-prot
 
 Keep SvelteKit, Svelte 5, PocketBase, and the current account-site sign-in model. Preserve existing private-app DOM IDs/classes, global `style.css`, and unrelated mobile behavior.
 
-| Location | Responsibility |
-| --- | --- |
-| `src/lib/jnote.svelte.js` | Shared reactive state; unlock/session, editor, commit, conflict, and publication workflows |
-| `src/lib/crypto.js` | New versioned crypto primitives; no Svelte, DOM, storage, or PocketBase |
-| `src/lib/vault.js` | Vault/note/share key operations and serialization |
-| `src/lib/localDb.js` | User/epoch-scoped IndexedDB stores and local transactions |
-| `src/lib/sync.js` | Nonreactive outbox/transport helpers coordinated by `JNoteState` |
-| `src/lib/publicSharing.js` | Snapshot encryption, owner management wrappers, publication transport |
-| `src/lib/accounts.js` | Account bridge/handoff and centralized server/account URLs; plain-Node safe |
-| `src/lib/search.js` | Pure search/index decision helpers |
-| `src/routes/+page.svelte` | Private-app lifecycle and SvelteKit mobile-panel history |
-| `src/routes/s/[shareId]/+page.svelte` | Minimal public viewer, without private-app initialization |
-| Authoritative server project | Reproducible schema, custom endpoints, authorization, transactions, and cutover tooling |
+| Location                              | Responsibility                                                                             |
+| ------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `src/lib/jnote.svelte.js`             | Shared reactive state; unlock/session, editor, commit, conflict, and publication workflows |
+| `src/lib/crypto.js`                   | New versioned crypto primitives; no Svelte, DOM, storage, or PocketBase                    |
+| `src/lib/vault.js`                    | Vault/note/share key operations and serialization                                          |
+| `src/lib/localDb.js`                  | User/epoch-scoped IndexedDB stores and local transactions                                  |
+| `src/lib/sync.js`                     | Nonreactive outbox/transport helpers coordinated by `JNoteState`                           |
+| `src/lib/publicSharing.js`            | Snapshot encryption, owner management wrappers, publication transport                      |
+| `src/lib/accounts.js`                 | Account bridge/handoff and centralized server/account URLs; plain-Node safe                |
+| `src/lib/search.js`                   | Pure search/index decision helpers                                                         |
+| `src/routes/+page.svelte`             | Private-app lifecycle and SvelteKit mobile-panel history                                   |
+| `src/routes/s/[shareId]/+page.svelte` | Minimal public viewer, without private-app initialization                                  |
+| Authoritative server project          | Reproducible schema, custom endpoints, authorization, transactions, and cutover tooling    |
 
 Find the authoritative server source before editing backend code. If none exists, add a reproducible backend package here rather than relying on undocumented dashboard configuration. Inspect the deployed PocketBase version before choosing hook/API syntax. If actual credentials/access are unavailable, finish independent code/tests/build and report the specific missing access; do not pretend backend changes happened.
 
@@ -44,14 +44,14 @@ Find the authoritative server source before editing backend code. If none exists
 
 Active storage after reset is v2 only. Reject legacy/unknown payloads with an update/reset-required error; never fall back to plaintext. The old plaintext export is a standalone file, not an active legacy store.
 
-| Key | Decision |
-| --- | --- |
-| Unlock key | Local PBKDF2-SHA-256 from encryption passphrase, random 16-byte salt, initially 310,000 iterations |
-| Account vault key | Random 256-bit AES key; encrypted by unlock key; independent of passphrase |
-| Note key | Independent random 256-bit AES key per note/key generation; owner copy wrapped by vault key |
-| Public-share key | Independent random 256-bit AES key per link; encrypts a separate publication |
-| Device key | Non-extractable AES wrapping key in IndexedDB protecting a remembered local vault-key copy; verify browser support |
-| Future recipient/recovery keys | Wrapper extension point only; no identity/invitation/recovery implementation now |
+| Key                            | Decision                                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Unlock key                     | Local PBKDF2-SHA-256 from encryption passphrase, random 16-byte salt, initially 310,000 iterations                 |
+| Account vault key              | Random 256-bit AES key; encrypted by unlock key; independent of passphrase                                         |
+| Note key                       | Independent random 256-bit AES key per note/key generation; owner copy wrapped by vault key                        |
+| Public-share key               | Independent random 256-bit AES key per link; encrypts a separate publication                                       |
+| Device key                     | Non-extractable AES wrapping key in IndexedDB protecting a remembered local vault-key copy; verify browser support |
+| Future recipient/recovery keys | Wrapper extension point only; no identity/invitation/recovery implementation now                                   |
 
 Use AES-256-GCM with a fresh random 12-byte nonce for every encryption. Never derive note keys from passwords or IDs. Do not lower password derivation cost for startup speed. Remembered devices use protected local key material without repeating PBKDF2.
 
@@ -69,16 +69,16 @@ Keep raw key bytes short-lived. IndexedDB/non-extractable keys do not prevent ma
 
 Keep the authentication collection unchanged and retain owner scoping even with one real user. Use a second test identity to verify isolation.
 
-| Collection | Required logical fields/purpose |
-| --- | --- |
-| `jnote_vaults` | Unique owner, epoch, format/minimum client, wrapped vault key/KDF parameters, vault revision, change sequence |
-| `jnote` | Owner, epoch, unique logical note ID, head revision, key generation, encrypted summary, soft-delete marker |
-| `jnote_content` | Owner/note reference, epoch, unique revision ID, parent revision, operation ID, key generation, encrypted title/body |
-| `jnote_key_grants` | Owner/note/epoch/generation, wrapper scheme, recipient kind/ID, wrapped key |
-| `jnote_private_objects` | Owner, epoch, opaque object ID/type, revision, encrypted folder/placement/preferences |
-| `jnote_operations` | Owner/epoch, unique operation ID, request fingerprint, resulting IDs/revisions/receipt |
-| `jnote_changes` | Owner/epoch, unique monotonic sequence, object/type/revision or deletion marker |
-| `jnote_public_shares` | Owner/epoch, random share ID, source note/revision, publication revision, expiry, enabled flag, ciphertext, owner-wrapped share key |
+| Collection              | Required logical fields/purpose                                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `jnote_vaults`          | Unique owner, epoch, format/minimum client, wrapped vault key/KDF parameters, vault revision, change sequence                       |
+| `jnote`                 | Owner, epoch, unique logical note ID, head revision, key generation, encrypted summary, soft-delete marker                          |
+| `jnote_content`         | Owner/note reference, epoch, unique revision ID, parent revision, operation ID, key generation, encrypted title/body                |
+| `jnote_key_grants`      | Owner/note/epoch/generation, wrapper scheme, recipient kind/ID, wrapped key                                                         |
+| `jnote_private_objects` | Owner, epoch, opaque object ID/type, revision, encrypted folder/placement/preferences                                               |
+| `jnote_operations`      | Owner/epoch, unique operation ID, request fingerprint, resulting IDs/revisions/receipt                                              |
+| `jnote_changes`         | Owner/epoch, unique monotonic sequence, object/type/revision or deletion marker                                                     |
+| `jnote_public_shares`   | Owner/epoch, random share ID, source note/revision, publication revision, expiry, enabled flag, ciphertext, owner-wrapped share key |
 
 Use individual encrypted folder/placement/settings records, not one large account manifest. Summaries are separate from history bodies for quick list loading. Folder placement is personal and excluded from sharing. Synchronize arbitrary Custom CSS without breaking current private-app selector behavior.
 
@@ -132,25 +132,25 @@ Verify direct navigation/refresh, trailing slashes, GitHub Pages fallback, custo
 
 **7. Execution checklist, in dependency order**
 
-1. [ ] Inspect working-tree changes and guidance; locate server source/access/version/schema/rules and the sole owner ID. Preserve unrelated work.
+1. [x] Inspect working-tree changes and guidance; locate server source/access/version/schema/rules and the approved owners ID. Preserve unrelated work.
 2. [ ] Collect a short startup baseline on available browsers. Use generated small/large libraries; do not spend a phase rebuilding the old app for elaborate benchmarking.
-3. [ ] Specify v2 envelopes/AAD/wrappers, IDs/revisions/epochs, local states, endpoints/indexes/errors in schema/code fixtures. Record resolved details here.
-4. [ ] Implement/test pure crypto/vault helpers: note/share isolation, wrappers, passphrase rewrap, and device remembrance.
-5. [ ] Implement/test transactional local storage, drafts/outbox, sequence protection, restart/epoch/account isolation, and multi-tab coordination.
-6. [ ] Implement/test schema, custom authenticated mutations, receipts/conflicts, bootstrap/content/change feed, and epoch guards against a disposable database.
-7. [ ] Wire `JNoteState` to the new helpers; remove legacy active reads/writes/queue coalescing. Preserve UI, reconciliation, history, and routine soft deletes.
-8. [ ] Implement cached startup, offline/error states, lock/forget-device, password change, and current-body hydration. Validate keys through the vault wrapper, not a remote sample note.
-9. [ ] Implement encrypted organization/settings, preserve existing Custom CSS, update export for new notes, and complete local search/coverage.
-10. [ ] Implement snapshot publishing/management endpoints and `/s/[shareId]` viewer, including expiry, manual republishing, independent disable, and source-note deletion.
-11. [ ] Run focused integration/security-boundary tests and required app checks. Build the release and prepare the concrete reset against the actual server before deleting production data.
+3. [x] Specify v2 envelopes/AAD/wrappers, IDs/revisions/epochs, local states, endpoints/indexes/errors in schema/code fixtures. Record resolved details here.
+4. [x] Implement/test pure crypto/vault helpers: note/share isolation, wrappers, passphrase rewrap, and device remembrance.
+5. [x] Implement/test transactional local storage, drafts/outbox, sequence protection, restart/epoch/account isolation, and multi-tab coordination.
+6. [x] Implement/test schema, custom authenticated mutations, receipts/conflicts, bootstrap/content/change feed, and epoch guards against a disposable database.
+7. [x] Wire `JNoteState` to the new helpers; remove legacy active reads/writes/queue coalescing. Preserve UI, reconciliation, history, and routine soft deletes.
+8. [x] Implement cached startup, offline/error states, lock/forget-device, password change, and current-body hydration. Validate keys through the vault wrapper, not a remote sample note.
+9. [x] Implement encrypted organization/settings, preserve existing Custom CSS, update export for new notes, and complete local search/coverage.
+10. [x] Implement snapshot publishing/management endpoints and `/s/[shareId]` viewer, including expiry, manual republishing, independent disable, and source-note deletion.
+11. [x] Run focused integration/security-boundary tests and required app checks. Build the release and prepare the concrete reset against the actual server before deleting production data.
 12. [ ] On the later implementation/deployment request, perform the authorized cutover below when access is available; verify live private app and logged-out public viewing.
-13. [ ] Update README/runbook with actual backend location, format/API decisions, epoch/reset receipt, completed checks, and live evidence. Report exact remaining blockers without marking unfinished work complete.
+13. [x] Update README/runbook with actual backend location, format/API decisions, epoch/reset receipt, completed checks, and live evidence. Report exact remaining blockers without marking unfinished work complete.
 
 Build the target once against clean test data. Do not ship interim v1 enhancements or implement old ciphertext/history conversion.
 
 **8. One-time fresh-start cutover**
 
-Write a scoped rerunnable reset script/command. It must identify the configured PocketBase instance, sole owner, allowlisted JNote collections, and target epoch. Do not perform broad deletions from memory.
+Write a scoped rerunnable reset script/command. It must identify the configured PocketBase instance, approved owners, allowlisted JNote collections, and target epoch. Do not perform broad deletions from memory.
 
 1. Put JNote writes into maintenance mode and disable legacy direct-write rules before deleting anything. Leave the account service available. Old tabs/installed app versions must not resurrect notes.
 2. Ensure target code/schema/reset tooling passed disposable-database checks. Preserve the user's export. Take an available server snapshot if straightforward, but do not make an additional note export/migration a prerequisite after the user's explicit export/reset authorization.
@@ -194,13 +194,21 @@ Owner wrappers and note payload encryption are independent. A later verified rec
 
 Do not implement recipient keys/invites now. Later work must cover authenticated key discovery, fingerprints/key changes, permissions on every endpoint, signed collaborative authorship as required, access-change sync, and rotation. Decryption access is not permission to upload; revocation cannot erase prior knowledge. Private folder placement remains personal.
 
-**12. Execution notes to fill during implementation**
+**12. Execution evidence**
 
-- Status: ready for implementation; this document edit performs no app/backend reset.
-- Authoritative backend/version/access: discover in task 1.
-- Deployment instance/sole owner: resolve from configuration and authenticated administrative inspection.
-- Final envelope/AAD/API/index decisions: record from implemented code/schema fixtures.
-- Dataset epoch/reset receipt: record after actual cutover only.
-- Validation/build/live tests: record actual outcomes as work completes.
+- Status: frontend deployed at https://jnote-v2-joedotmt.fly.dev; JNote v2 backend and scoped reset deployed on the existing `joemt` instance. Account-site handoff publication is pending explicit approval. Desktop/mobile browser acceptance remains outstanding, so task 12 is not marked complete.
+- Actual backend: PocketBase **0.28.2**, existing image `joemt:deployment-01KATKQ6A5SA593XM5XXE1M42J`, machine `d8d9236f55d398`, Frankfurt, data `/app/pb_data`, volume `vol_vly16n7mdo7n0wp4`. No binary/version upgrade, image replacement, user/schema/auth-setting change or unrelated data reset was performed. No authoritative backend source was available initially; `backend/` is now the reproducible JNote package, installed through persistent Fly Machine file configuration.
+- Live scope: 83 notes and 142 history records across `21w6a92teb66h0p`, `m0lorl6com1t9h3`, `qn41hkrnb79xhjz`. Live inspection corrected the original single-owner assumption. The user explicitly approved resetting all JNote records across those owners while preserving all accounts and unrelated collections. The command now takes a comma-separated approved-owner list, refuses any unapproved owner, and checks for unrelated relations before closing rules.
+- Snapshot: `vs_wAPlV5OP26JUpO4G5Kz0`, created at `2026-10-01T23:24:13Z`, five-day retention. The user's existing export was not touched.
+- Production reset: completed `2026-10-01T23:36:47.372Z`; epoch **`2c336885-3ba9-4f1c-b8a3-316feee40b35`**. The active control receipt records the approved owner list and completion time. Only allowlisted JNote records/collections were rebuilt. Pre/post hashes match for all 11 users, all 12 non-JNote collection schemas and records, and backend settings. Ordinary deploys do not reset data. A completed same-target rerun preserves newly created v2 records.
+- Deployment: new static frontend Fly app `jnote-v2-joedotmt`, one shared-CPU/256 MB machine with autostop/autostart. Caddy serves the SvelteKit fallback for direct public URLs. Its build uses the existing backend URL; no second database or volume was created. Docker's explicit source allowlist excludes credentials, production/local data and Git metadata.
+- Backend compatibility: full disposable integration/cutover suites passed on the exact production **0.28.2** binary and SHA-256-verified **0.40.3** development binary. Compatibility fixes use a configured/sibling hook path when older migrations lack `__hooks`, and explicit ciphertext-size checks instead of a large repeat count unsupported by the older regex engine. Fixtures test multiple approved JNote owners plus an unrelated account, refusal before mutation for missing approval/unrelated relations, and preservation of every user.
+- Format/API: `{v:2,alg:"A256GCM",iv,ct}`, canonical base64url, fresh 12-byte nonces, deterministic JSON-array AAD, PBKDF2-SHA-256 at 310,000 iterations. Vault/note/publication keys are independent. UI/draft/queue identities stay logical UUIDs; server IDs reconcile into `serverId`. Immutable encrypted history, atomic receipts/change feeds, revision conflicts, soft deletes and publication revocation are tested. JNote generic rules are locked; the dedicated public limiter leaves account rate-limit settings unchanged.
+- Local/cache behavior: encrypted `jnote.v2.<owner>.<epoch>` IndexedDB, transactional drafts/commits/outbox, sequence protection, renewable cross-tab sync leases, remembered nonextractable device keys, cached summaries before cloud, bounded body hydration/search, explicit lock/cloud/conflict/persistence states and durable password rewrap. Current-epoch work is never replayed into a new epoch. Existing global CSS and private IDs/classes remain.
+- Public links: independent read-only encrypted snapshots at `/s/[shareId]`; first inline bootstrap consumes/removes the key, skips account/private/Custom CSS/third-party initialization, and uses self-hosted assets, CSP and safe text. Expiry, manual republication, independent disable and source deletion are covered in integration tests. Live HTTP checks passed for direct routes with/without trailing slash, early fragment stripping, root/fallback asset paths, manifest start/scope and service worker. Anonymous private bootstrap is denied; backend health is healthy.
+- Account integration: the existing account site continues using the unchanged `users` collection. A reviewed two-line addition to `client.js` and `session.js` in a clean temporary checkout allows only `https://jnote-v2-joedotmt.fly.dev`; existing client tests pass. Automatic approval review rejected publishing that new authentication handoff origin without explicit approval. The user approval request is pending. Production user-token minting was also rejected; no token was created or exported, and authentication boundaries were verified against disposable test users instead.
+- Required checks: `npm run check` passed with zero errors/warnings; all ten `npm test` files passed; `npm run build` passed; `git diff --check` passed. The remote container build and deployment passed. Prior default and `/jnote` base-path builds and artifact checks also passed.
+- Browser limitation: the available UI inventory had no enabled browser surfaces. No old-app browser baseline, visual/mobile acceptance, actual browser IndexedDB compatibility or live workflow test is claimed. Generated Node/WebCrypto/fake-indexeddb measurements for 3 KB bodies were 100 notes: summaries 19 ms, hydration 39 ms, password unlock 29 ms; 1,000 notes: 81/364/29 ms. These exclude network/rendering and are not an old/new browser comparison.
+- Remaining work: publish the exact new handoff origin after user approval, verify its live account scripts and client allowlists, then run live signed-in workflows and logged-out encrypted publication viewing in an available browser. The application and backend deployments/reset are complete; those acceptance steps remain open.
 
 Reference documentation: [PocketBase transactions](https://pocketbase.io/docs/js-database/), [access rules](https://pocketbase.io/docs/api-rules-and-filters/), [realtime](https://pocketbase.io/docs/api-realtime/), [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API), and [URL fragments](https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Fragment). Check deployed server compatibility before implementation.

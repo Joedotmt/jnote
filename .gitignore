@@ -5,3 +5,5 @@ build
 .env.*
 !.env.example
 npm-debug.log*
+backend/.bin/
+backend/pb_data/
