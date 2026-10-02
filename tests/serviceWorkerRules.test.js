@@ -35,11 +35,37 @@ test('build output precached at install comes from the cache', () => {
 	assert.equal(classify(`${origin}/_app/immutable/entry/app.abc123.js`), 'precached');
 	assert.equal(classify(`${origin}/icons/icon-192.png`), 'precached');
 	// A query string does not make it a different file.
-	assert.equal(classify(`${origin}/`, { mode: 'navigate' }), 'precached');
+	assert.equal(classify(`${origin}/icons/icon-192.png?v=1`), 'precached');
 });
 
-test('a page load that is not precached falls back to the shell', () => {
+test('every page load reaches the network before falling back to the shell', () => {
+	assert.equal(classify(`${origin}/`, { mode: 'navigate' }), 'navigate');
+	assert.equal(classify(`${origin}/?refresh=1`, { mode: 'navigate' }), 'navigate');
 	assert.equal(classify(`${origin}/some/deep/link/`, { mode: 'navigate' }), 'navigate');
+	assert.equal(
+		classify(`${origin}/jnote/`, {
+			mode: 'navigate',
+			basePath: '/jnote',
+			precached: new Set(['/jnote/'])
+		}),
+		'navigate'
+	);
+});
+
+test('open tabs can still request immutable chunks from the previous release', () => {
+	assert.equal(classify(`${origin}/_app/immutable/chunks/previous.js`), 'precached');
+	assert.equal(
+		classify(`${origin}/jnote/_app/immutable/chunks/previous.js`, {
+			basePath: '/jnote'
+		}),
+		'precached'
+	);
+	assert.equal(
+		classify(`${origin}/_app/immutable/chunks/previous.js`, {
+			basePath: '/jnote'
+		}),
+		'ignore'
+	);
 });
 
 test('other same-origin requests are left alone', () => {

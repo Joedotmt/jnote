@@ -17,55 +17,90 @@ const PRECACHED = new Set(ASSETS.map((path) => new URL(path, worker.location.ori
 const SHELL_URL = `${base}/`;
 
 worker.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(ASSETS)));
+	event.waitUntil(
+		caches
+			.open(SHELL_CACHE)
+			.then((cache) =>
+				cache.addAll(
+					ASSETS.map(
+						(path) => new Request(new URL(path, worker.location.origin), { cache: 'reload' })
+					)
+				)
+			)
+			// A cached old page must not keep the new worker waiting indefinitely.
+			.then(() => worker.skipWaiting())
+	);
 });
 
 worker.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(
-        keys.filter((key) => key !== SHELL_CACHE && key !== RUNTIME_CACHE).map((key) => caches.delete(key))
-      ))
-      .then(() => worker.clients.claim())
-  );
+	event.waitUntil(
+		caches
+			.keys()
+			.then((keys) => {
+				// Keep the previous release's immutable chunks for tabs already using it.
+				// Cache names are returned in creation order. Never remove unrelated caches.
+				const previousShell = keys
+					.filter((key) => key.startsWith('jnote-shell-') && key !== SHELL_CACHE)
+					.at(-1);
+				return Promise.all(
+					keys
+						.filter(
+							(key) =>
+								(key.startsWith('jnote-shell-') || key.startsWith('jnote-runtime-')) &&
+								key !== SHELL_CACHE &&
+								key !== RUNTIME_CACHE &&
+								key !== previousShell
+						)
+						.map((key) => caches.delete(key))
+				);
+			})
+			.then(() => worker.clients.claim())
+	);
 });
 
 worker.addEventListener('fetch', (event) => {
-  const kind = classifyRequest({
-    url: event.request.url,
-    method: event.request.method,
-    mode: event.request.mode,
-    origin: worker.location.origin,
-    precached: PRECACHED
-  });
-  if (kind === 'ignore') return;
-  event.respondWith(respond(event.request, kind));
+	const kind = classifyRequest({
+		url: event.request.url,
+		method: event.request.method,
+		mode: event.request.mode,
+		origin: worker.location.origin,
+		precached: PRECACHED,
+		basePath: base
+	});
+	if (kind === 'ignore') return;
+	event.respondWith(respond(event.request, kind));
 });
 
 async function respond(request, kind) {
-  if (kind === 'precached') {
-    // Hashed build output never changes under one version, so the cache is the truth.
-    return (await caches.match(request, { ignoreSearch: true })) || fetch(request);
-  }
+	if (kind === 'precached') {
+		// Hashed build output never changes under one version, so the cache is the truth.
+		const cache = await caches.open(SHELL_CACHE);
+		return (
+			(await cache.match(request, { ignoreSearch: true })) ||
+			(await caches.match(request, { ignoreSearch: true })) ||
+			fetch(request)
+		);
+	}
 
-  if (kind === 'navigate') {
-    try {
-      return await fetch(request);
-    } catch (error) {
-      const shell = (await caches.match(SHELL_URL)) || (await caches.match(`${base}/index.html`));
-      if (shell) return shell;
-      throw error;
-    }
-  }
+	if (kind === 'navigate') {
+		try {
+			return await fetch(request, { cache: 'no-cache' });
+		} catch (error) {
+			const cache = await caches.open(SHELL_CACHE);
+			const shell = (await cache.match(SHELL_URL)) || (await cache.match(`${base}/index.html`));
+			if (shell) return shell;
+			throw error;
+		}
+	}
 
-  // runtime: serve what we have, refresh it behind the scenes.
-  const cache = await caches.open(RUNTIME_CACHE);
-  const cached = await cache.match(request);
-  const refresh = fetch(request)
-    .then((response) => {
-      if (response.ok || response.type === 'opaque') cache.put(request, response.clone());
-      return response;
-    })
-    .catch(() => undefined);
-  return cached || (await refresh) || Response.error();
+	// runtime: serve what we have, refresh it behind the scenes.
+	const cache = await caches.open(RUNTIME_CACHE);
+	const cached = await cache.match(request);
+	const refresh = fetch(request)
+		.then((response) => {
+			if (response.ok || response.type === 'opaque') cache.put(request, response.clone());
+			return response;
+		})
+		.catch(() => undefined);
+	return cached || (await refresh) || Response.error();
 }

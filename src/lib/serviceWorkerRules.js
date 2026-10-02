@@ -16,9 +16,10 @@ export const RUNTIME_CACHE_HOSTS = new Set([
  * @param {string} request.mode        Request.mode, 'navigate' for a page load
  * @param {string} request.origin      the worker's own origin
  * @param {Set<string>} request.precached  pathnames precached at install
+ * @param {string} [request.basePath]  deployment base, empty for a custom domain
  * @returns {'ignore' | 'precached' | 'runtime' | 'navigate'}
  */
-export function classifyRequest({ url, method, mode, origin, precached }) {
+export function classifyRequest({ url, method, mode, origin, precached, basePath = '' }) {
 	if (method !== 'GET') return 'ignore';
 	let target;
 	try {
@@ -34,7 +35,9 @@ export function classifyRequest({ url, method, mode, origin, precached }) {
 		// and session, and a stale copy of either would be worse than no copy.
 		return RUNTIME_CACHE_HOSTS.has(target.hostname) ? 'runtime' : 'ignore';
 	}
-	if (precached.has(target.pathname)) return 'precached';
+	// HTML must reach the current release online, even when '/' is in the precache.
 	if (mode === 'navigate') return 'navigate';
+	if (precached.has(target.pathname) || target.pathname.startsWith(`${basePath}/_app/immutable/`))
+		return 'precached';
 	return 'ignore';
 }

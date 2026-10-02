@@ -1,6 +1,6 @@
 # JNote
 
-JNote is a client-side encrypted notes app built with Svelte 5 and SvelteKit. Notes are encrypted in the browser, cached in user/epoch-scoped IndexedDB, and synchronized through revision-checked PocketBase endpoints. The v2 frontend is deployed at https://jnote-v2-joedotmt.fly.dev and uses the existing `joemt` PocketBase database. The JNote-only production reset is complete; sign-in on the new URL awaits approval of its account-site handoff origin.
+JNote is a client-side encrypted notes app built with Svelte 5 and SvelteKit. Notes are encrypted in the browser, cached in user/epoch-scoped IndexedDB, and synchronized through revision-checked PocketBase endpoints. The frontend is deployed on GitHub Pages at https://notes.joe.mt and uses the existing `joemt` PocketBase database. The JNote-only production reset is complete, and the existing account site already serves this origin.
 
 ## Signing in
 
@@ -38,7 +38,7 @@ Adding an origin means three lists, which must stay in step: `BRIDGE_ORIGINS` or
 | ------------------------------- | ---------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
 | PocketBase instance             | `VITE_POCKETBASE_URL`  | `window.JNOTE_CONFIG.pocketbaseUrl`   | `https://joemt.fly.dev`                                                |
 | Account site                    | `VITE_ACCOUNTS_ORIGIN` | `window.JNOTE_CONFIG.accountsOrigin`  | `https://accounts.joe.mt`                                              |
-| Origins the account site serves | —                      | `window.JNOTE_CONFIG.accountsOrigins` | `joe.mt`, `notes.joe.mt`, `jnote-v2-joedotmt.fly.dev` (account-site publication pending), `localhost:5173/4173`, `127.0.0.1:5173/4173` |
+| Origins the account site serves | —                      | `window.JNOTE_CONFIG.accountsOrigins` | `joe.mt`, `notes.joe.mt`, `localhost:5173/4173`, `127.0.0.1:5173/4173` |
 
 Copy `.env.example` to `.env` to set the build-time values. The runtime overrides
 live in the inline script at the top of `src/app.html`, which survives into
@@ -99,7 +99,11 @@ path, and `static/icons/` holds the icons (regular, maskable, and an Apple touch
 icon). `src/service-worker.js` precaches the built app shell per version and caches
 the BeerCSS and Google Fonts assets as they are fetched, so the app opens instantly
 and still draws itself offline. Its rules live in `src/lib/serviceWorkerRules.js`,
-which is pure and tested.
+which is pure and tested. Online page loads fetch the current HTML, including the
+precached home page; offline loads use the current release's cached shell. A fully
+installed update activates without waiting for every tab to close. The previous
+release's immutable chunks remain available to open tabs, and unrelated caches
+are preserved. Activation does not reload tabs or interrupt unsaved edits.
 
 The worker never intercepts PocketBase/account requests or API paths, including anonymous public ciphertext. A remembered account can open its encrypted cache while cloud checks run. Cloud uploads require refreshed authentication and the current dataset epoch. Lock removes plaintext from memory; forgetting a device deletes its protected remembered copy without discarding durable work. Quota/persistence failures remain visible.
 
@@ -123,11 +127,11 @@ POCKETBASE_BIN="$PWD/backend/.bin/pocketbase" npm run test:cutover
 npm run benchmark:cache
 ```
 
-The backend suites use disposable databases and test two-account isolation, real database rollback, duplicate receipts, stale revisions/epochs, direct-write denial, expiry/republication/revocation, and safe cutover reruns. The cache benchmark uses generated data under Node/WebCrypto/fake-indexeddb, not a browser startup measurement. Actual production reset/deployment and desktop/mobile browser validation remain outstanding.
+The backend suites use disposable databases and test two-account isolation, real database rollback, duplicate receipts, stale revisions/epochs, direct-write denial, expiry/republication/revocation, and safe cutover reruns. The cache benchmark uses generated data under Node/WebCrypto/fake-indexeddb, not a browser startup measurement. The production reset/deployment receipt and browser validation evidence are in [the execution runbook](docs/architecture-overhaul-plan.md).
 
 ## GitHub Pages
 
-The workflow in `.github/workflows/deploy.yml` checks, tests, builds, and publishes the static `build/` output. In the repository's **Settings → Pages**, select **GitHub Actions** as the publishing source.
+The workflow in `.github/workflows/deploy.yml` checks, tests, builds, and publishes the static `build/` output. Production uses GitHub Actions as the Pages publishing source, with the custom domain `notes.joe.mt` and HTTPS enforced.
 
 The workflow gets the correct base path from GitHub Pages, so both project Pages URLs and configured custom domains are supported.
 
@@ -135,12 +139,12 @@ The workflow gets the correct base path from GitHub Pages, so both project Pages
 
 The authorized one-time reset replaces v1 encrypted data with a fresh v2 dataset. Account-service users, Custom CSS, private-app DOM IDs/classes, mobile routing/keyboard behavior, and global `style.css` are preserved. This does not authorize future wipes on redeployment. See [the execution runbook](docs/architecture-overhaul-plan.md) and [backend instructions](backend/README.md).
 
-## Fly deployment
+## Optional Fly frontend
 
-`fly.toml`, `Dockerfile`, and `Caddyfile` deploy the static frontend as the separate `jnote-v2-joedotmt` app in Frankfurt. Its build points to the existing backend; no second database or volume is created. Caddy serves SvelteKit's `404.html` fallback for public-link routes. The Docker build context includes only source/assets/configuration and excludes local credentials, data, and Git history.
+Production frontend releases use GitHub Pages. `fly.toml`, `Dockerfile`, and `Caddyfile` retain the optional static frontend packaging from the initial deployment. An alternate frontend origin must be explicitly allowed by its account site before it can sign in. Caddy serves SvelteKit's `404.html` fallback for public-link routes. The Docker build context includes only source/assets/configuration and excludes local credentials, data, and Git history.
 
 ```sh
 fly deploy --ha=false
 ```
 
-Backend JNote hooks remain on `joemt`, using its existing PocketBase **0.28.2** binary, image, 1 GB volume, account settings and users. See [backend/README.md](backend/README.md) for the verified reset receipt and scoped hook deployment. Old JNote records were deliberately reset; routine v2 deletes remain soft. Browser workflow acceptance remains outstanding.
+Backend JNote hooks remain on `joemt`, using its existing PocketBase **0.28.2** binary, image, 1 GB volume, account settings and users. See [backend/README.md](backend/README.md) for the verified reset receipt and scoped hook deployment. Old JNote records were deliberately reset; routine v2 deletes remain soft.
