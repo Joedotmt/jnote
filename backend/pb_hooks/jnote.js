@@ -127,6 +127,13 @@ function change(app, control, owner, epoch, objectId, type, revision, value, gra
 	create(app, 'jnote_changes', { owner, epoch, objectId, type, revision, sequence, value, grant });
 	return sequence;
 }
+function activeControl(app) {
+	const records = app.findRecordsByFilter('jnote_control', 'name={:name}', '', 1, 0, {
+		name: 'active'
+	});
+	if (!records.length) fail(503, 'JNote setup is temporarily unavailable. Please try again later.');
+	return records[0];
+}
 function handle(e, action) {
 	e.response.header().set('Cache-Control', 'no-store');
 	if (!e.auth || e.auth.collection().name !== 'users') fail(401, 'Sign in required.');
@@ -143,7 +150,7 @@ function handle(e, action) {
 	if (input.owner && input.owner !== owner) fail(403, 'Invalid owner.');
 	let result;
 	e.app.runInTransaction((app) => {
-		const control = app.findFirstRecordByData('jnote_control', 'name', 'active');
+		const control = activeControl(app);
 		const epoch = control.getString('epoch');
 		if (+input.protocol !== 2 || control.getInt('minimumClient') > 2) fail(426, 'Update required.');
 		if (control.getBool('maintenance')) fail(503, 'JNote maintenance in progress.');
@@ -449,7 +456,7 @@ function publicRateLimit(e) {
 function publicRead(e) {
 	e.response.header().set('Cache-Control', 'no-store');
 	publicRateLimit(e);
-	const control = e.app.findFirstRecordByData('jnote_control', 'name', 'active');
+	const control = activeControl(e.app);
 	if (control.getBool('maintenance')) fail(404, 'Publication unavailable.');
 	const shareId = e.request.pathValue('shareId');
 	if (!token.test(shareId || '')) fail(404, 'Publication unavailable.');

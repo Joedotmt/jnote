@@ -71,7 +71,7 @@ After the reset, install the v2 migration and reload the existing account-enable
 - Completion: `2026-10-01T23:36:47.372Z`. The active `jnote_control.resetReceipt` includes the same owners, epoch and completion time.
 - Hash audits confirmed all 11 `users`, all 12 non-JNote collection schemas/records, and backend settings were unchanged. The original image, VM, startup configuration, volume and network service were retained.
 
-The authoritative JNote source is this package. The existing image has no account-service hook files. Four JNote hook files and the v2 migration are installed through Fly Machine `files` configuration, so they are injected again on machine startup. The original migration placeholder is preserved. `JNOTE_INSTANCE=joemt` is the only added backend environment variable. No superuser credentials or production session tokens were exported.
+The authoritative JNote source is this package. The existing image has no account-service hook files. Five JNote hook files and the v2 migration are installed through Fly Machine `files` configuration, so they are injected again on machine startup. The original migration placeholder is preserved. `JNOTE_INSTANCE=joemt` is the only added backend environment variable. No superuser credentials or production session tokens were exported.
 
 For future scoped hook updates on this already-cut-over instance:
 
@@ -79,6 +79,10 @@ For future scoped hook updates on this already-cut-over instance:
 node scripts/deploy-jnote-hooks.mjs joemt d8d9236f55d398 ready
 ```
 
-The helper preserves the existing image and volume and **never runs the reset command**. For an uncut-over legacy instance, install `guards` first; use `ready` only after the approved cutover. Custom nonstandard layouts on PocketBase 0.28 must set `JNOTE_HOOKS_DIR` for the migration's schema import.
+The helper preserves the existing image and volume and **never runs the reset command**. A `ready` deployment runs the read-only `jnote-check` command; the generic PocketBase health endpoint alone cannot verify that JNote's active control record exists. For an uncut-over legacy instance, install `guards` first; use `ready` only after the approved cutover. Custom nonstandard layouts on PocketBase 0.28 must set `JNOTE_HOOKS_DIR` for the migration's schema import.
+
+On 2026-10-02 the signed-in bootstrap returned 404 because the active control record was absent, although all nine v2 collections were present. All encrypted JNote collections were empty. Only the control record was restored at `2026-10-02T00:30:49Z`, using the original epoch and reset receipt above; no further reset was run. Readiness passed again after a normal machine restart, and subsequent live bootstrap requests returned 200 with vault/note/history creation visible in record counts. Missing control now returns 503 rather than an object-not-found response.
+
+If verified metadata is lost again, do not rerun cutover or invent another epoch. `jnote-restore-control <instance> <original-epoch> <original-completion-time> <approved-owner-list>` restores that one record only when all encrypted JNote collections are empty and have the v2 schema. It refuses a wrong instance, conflicting control or any existing encrypted data. A same-target rerun preserves the existing control and data. For nonempty datasets, recover the control from a verified backup. Use the existing data directory and `--automigrate=false` with every maintenance command.
 
 The frontend is GitHub Pages at https://notes.joe.mt, an origin the account site already allows. Browser session-bridge, fresh vault setup and remembered-device reload checks use disposable users with every backend request routed to a temporary PocketBase instance; no production user token is needed. Backend health and denied anonymous/generic access are verified. Full browser acceptance and performance comparison remain separate from these focused regression checks; see the execution runbook.

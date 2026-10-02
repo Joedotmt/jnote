@@ -70,6 +70,46 @@ try {
 	assert.equal(b.vault, null);
 	assert.equal(b.protocol, 2);
 	const scope = { owner: pb.authStore.record.id, epoch: b.epoch };
+	// Missing control metadata must be reported as unavailable, and recovered only
+	// from a confirmed epoch/receipt when every encrypted collection is empty.
+	const initialControl = (await admin.collection('jnote_control').getFullList())[0];
+	const usersBeforeRecovery = await admin.collection('users').getFullList({ sort: 'id' });
+	await admin.collection('jnote_control').delete(initialControl.id);
+	await expectStatus(() => api.bootstrap(), 503);
+	const completedAt = new Date().toISOString();
+	const approvedOwners = clients
+		.map((c) => c.authStore.record.id)
+		.sort()
+		.join(',');
+	const maintenance = (command, values = []) =>
+		spawnSync(binary, [command, ...values, ...args], {
+			encoding: 'utf8',
+			env: { ...process.env, JNOTE_INSTANCE: 'disposable' }
+		});
+	assert.notEqual(maintenance('jnote-check').status, 0);
+	assert.notEqual(
+		maintenance('jnote-restore-control', ['wrong', b.epoch, completedAt, approvedOwners]).status,
+		0
+	);
+	const recoveryArgs = ['disposable', b.epoch, completedAt, approvedOwners];
+	const temporaryObject = await admin.collection('jnote_private_objects').create({
+		owner: scope.owner,
+		epoch: b.epoch,
+		objectId: newId(),
+		objectType: 'setting',
+		revision: newId()
+	});
+	assert.notEqual(maintenance('jnote-restore-control', recoveryArgs).status, 0);
+	assert.equal((await admin.collection('jnote_control').getFullList()).length, 0);
+	await admin.collection('jnote_private_objects').delete(temporaryObject.id);
+	const restored = maintenance('jnote-restore-control', recoveryArgs);
+	assert.equal(restored.status, 0, restored.stdout + restored.stderr);
+	assert.equal((await api.bootstrap()).epoch, b.epoch);
+	assert.deepEqual(
+		await admin.collection('users').getFullList({ sort: 'id' }),
+		usersBeforeRecovery
+	);
+	assert.equal(maintenance('jnote-check').status, 0);
 	const otherVault = await createVault('other-passphrase', {
 		owner: other.authStore.record.id,
 		epoch: b.epoch
@@ -86,6 +126,12 @@ try {
 	assert.equal(receipt.revision, v.header.revision);
 	assert.deepEqual(await api.send('vault', vaultRequest), receipt);
 	assert.equal((await api.bootstrap()).vault.format, 2);
+	assert.equal(maintenance('jnote-restore-control', recoveryArgs).status, 0);
+	assert.equal(
+		(await api.bootstrap()).vault.format,
+		2,
+		'A recovery rerun preserves existing vault data.'
+	);
 	await expectStatus(
 		() => api.send('vault', { ...vaultRequest, header: { ...v.header, revision: newId() } }),
 		409

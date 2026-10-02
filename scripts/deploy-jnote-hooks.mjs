@@ -16,10 +16,9 @@ if (
 const root = fileURLToPath(new URL('../', import.meta.url));
 const installed = resolve(homedir(), '.fly/bin/fly');
 const fly = process.env.FLY_BIN || (existsSync(installed) ? installed : 'fly');
-const files = ['main.pb.js', 'jnote.js', 'schema.js', 'cutover.js'].map((name) => [
-	`/app/pb_hooks/${name}`,
-	resolve(root, 'backend/pb_hooks', name)
-]);
+const files = ['main.pb.js', 'jnote.js', 'schema.js', 'cutover.js', 'maintenance.js'].map(
+	(name) => [`/app/pb_hooks/${name}`, resolve(root, 'backend/pb_hooks', name)]
+);
 if (stage === 'ready')
 	files.push([
 		'/app/pb_migrations/1790899200_jnote_v2.js',
@@ -30,4 +29,24 @@ for (const [guest, local] of files) args.push('--file-local', `${guest}=${local}
 args.push('--yes');
 const result = spawnSync(fly, args, { cwd: root, stdio: 'inherit' });
 if (result.error) throw result.error;
-process.exit(result.status ?? 1);
+if (result.status !== 0) process.exit(result.status ?? 1);
+if (stage === 'ready') {
+	// PocketBase's generic health endpoint does not verify JNote's dataset control.
+	for (const command of [
+		['machine', 'start', machine, '--app', app],
+		[
+			'ssh',
+			'console',
+			'--app',
+			app,
+			'--machine',
+			machine,
+			'-C',
+			'/app/pocketbase jnote-check --dir=/app/pb_data --hooksDir=/app/pb_hooks --automigrate=false'
+		]
+	]) {
+		const check = spawnSync(fly, command, { cwd: root, stdio: 'inherit' });
+		if (check.error) throw check.error;
+		if (check.status !== 0) process.exit(check.status ?? 1);
+	}
+}

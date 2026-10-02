@@ -27,6 +27,18 @@ $app.rootCmd.addCommand(
 		}
 	})
 );
+$app.rootCmd.addCommand(
+	new Command({
+		use: 'jnote-check',
+		run: () => require(`${__hooks}/maintenance.js`).check($app)
+	})
+);
+$app.rootCmd.addCommand(
+	new Command({
+		use: 'jnote-restore-control',
+		run: (cmd, args) => require(`${__hooks}/maintenance.js`).restoreControl($app, args)
+	})
+);
 
 // Install these guards before cutover. They also block old clients when collection
 // rules are still cached by the serving process during schema replacement.

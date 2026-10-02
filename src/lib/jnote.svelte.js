@@ -1531,9 +1531,9 @@ export class JNoteState {
 			const changed =
 				this.scope &&
 				(this.scope.owner !== this.currentUser.id || this.scope.epoch !== bootstrap.epoch);
-			if (changed)
-				this.accountError =
-					'The account or dataset changed. Old encrypted work is retained in its original cache.';
+			this.accountError = changed
+				? 'The account or dataset changed. Old encrypted work is retained in its original cache.'
+				: '';
 			await this.selectNamespace(this.currentUser.id, bootstrap.epoch);
 			this.api = api;
 			this.cloudValidated = true;
