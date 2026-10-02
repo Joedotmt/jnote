@@ -105,7 +105,7 @@ installed update activates without waiting for every tab to close. The previous
 release's immutable chunks remain available to open tabs, and unrelated caches
 are preserved. Activation does not reload tabs or interrupt unsaved edits.
 
-The worker never intercepts PocketBase/account requests or API paths, including anonymous public ciphertext. A remembered account can open its encrypted cache while cloud checks run. Cloud uploads require refreshed authentication and the current dataset epoch. Lock removes plaintext from memory; forgetting a device deletes its protected remembered copy without discarding durable work. Quota/persistence failures remain visible.
+The worker never intercepts PocketBase/account requests or API paths, including anonymous public ciphertext. A remembered account can open its encrypted cache while cloud checks run. Cloud uploads require refreshed authentication and the current dataset epoch. Account changes clear plaintext from memory. Forget decryption key removes this browser's protected remembered copy without discarding durable work; the current tab remains unlocked, and reopening requires the passphrase. Quota/persistence failures remain visible.
 
 ## Encryption and public links
 

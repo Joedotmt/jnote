@@ -130,9 +130,6 @@
 				<i aria-hidden="true">close</i>
 			</button>
 		</div>
-		<button class="settings-row-button" id="lock-vault" type="button" onclick={() => app.lock()}
-			>Lock vault</button
-		>
 		<button
 			class="settings-row-button"
 			id="open-custom-css-dialog"
