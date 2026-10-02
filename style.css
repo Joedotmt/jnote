@@ -1481,6 +1481,16 @@ button:focus-visible {
     margin: 0;
 }
 
+#import-notes-file {
+    display: block;
+    position: static;
+    width: 100%;
+    height: auto;
+    opacity: 1;
+    font: inherit;
+    color: var(--on-surface);
+}
+
 #custom-css-input {
     width: 100%;
     min-height: min(420px, 52vh);

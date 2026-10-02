@@ -109,7 +109,9 @@ The worker never intercepts PocketBase/account requests or API paths, including 
 
 ## Encryption and public links
 
-A random account vault key wraps independent note keys. The passphrase derives only a vault-unlock key, so changing it replaces the vault wrapper and leaves histories unchanged. Remembered devices use a nonextractable device key held in IndexedDB. This does not prevent malicious scripts on the same origin from using accessible keys. Unknown/v1 payloads are rejected; this release has no legacy import or ciphertext migration.
+A random account vault key wraps independent note keys. The passphrase derives only a vault-unlock key, so changing it replaces the vault wrapper and leaves histories unchanged. Remembered devices use a nonextractable device key held in IndexedDB. This does not prevent malicious scripts on the same origin from using accessible keys. Unknown/v1 encrypted payloads are rejected; ciphertext migration is not supported.
+
+**Settings → Import notes** restores JSON files from **Download all data/notes**, including plaintext exports from before the overhaul (format version 1) and current exports (version 2). The dialog validates and previews the file before saving. Notes and folders are added under new identities without replacing existing data or Custom CSS. Saved versions and their original timestamps are preserved; exported unsaved text becomes a saved version, and deleted notes remain soft-deleted. Each import adds a new set of copies. The whole file is encrypted with the current vault and saved in one local transaction with an ordered upload queue; it syncs when connected.
 
 Each explicit commit persists an encrypted history and ordered upload request atomically. Stale revisions preserve local work and open conflict review; note conflicts can be saved as independent copies with their dependent commits. Folder/settings edits use individual encrypted records and do not invent content history. Normal note deletion is soft and disables public links transactionally.
 

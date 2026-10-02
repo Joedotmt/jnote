@@ -24,6 +24,7 @@ import {
 import { openLocalDb, retireLegacyStores } from './localDb.js';
 import { JNoteApi, flushOutbox } from './sync.js';
 import { createPublication, publicationLink, republish } from './publicSharing.js';
+import { normalizeNoteImport } from './noteImport.js';
 
 const CUSTOM_CSS_STORAGE_KEY = 'jnote.customCss.v1';
 function now() {
@@ -119,6 +120,10 @@ export class JNoteState {
 	changeKeyOpen = $state(false);
 	customCss = $state('');
 	exportBusy = $state(false);
+	importOpen = $state(false);
+	importBusy = $state(false);
+	importStatus = $state('');
+	importError = $state('');
 	changeKeyBusy = $state(false);
 	changeKeyStatus = $state('');
 	changeKeyError = $state('');
@@ -1360,6 +1365,156 @@ export class JNoteState {
 		}
 	}
 
+	async importNotes(data) {
+		if (this.importBusy) return false;
+		this.importError = '';
+		this.importStatus = '';
+		if (!this.encryptionState || !this.db || this.changeKeyBusy || this.isKeyMigrationRunning) {
+			this.importError = 'Unlock notes and finish any key change before importing.';
+			return false;
+		}
+		let plan;
+		try {
+			plan = normalizeNoteImport(data);
+		} catch (error) {
+			this.importError = error.message;
+			return false;
+		}
+		this.importBusy = true;
+		let committed = false;
+		try {
+			const ok = await this.enqueueLocal(async () => {
+				const notes = [],
+					contents = [],
+					grants = [],
+					objects = [],
+					operations = [];
+				for (const [index, source] of plan.notes.entries()) {
+					this.importStatus = `Encrypting note ${index + 1} of ${plan.notes.length}…`;
+					const id = newId();
+					const pair = await createNoteKey(this.encryptionState.key, this.scope, id);
+					grants.push({ id, wrapper: pair.wrapper });
+					let note;
+					for (const body of source.versions) {
+						const revision = newId();
+						const summary = await encryptObject(
+							{ title: body.title },
+							pair.key,
+							context('summary', this.scope, id, revision)
+						);
+						const ciphertext = await encryptObject(
+							body,
+							pair.key,
+							context('history', this.scope, id, revision)
+						);
+						const payload = {
+							epoch: this.scope.epoch,
+							operationId: newId(),
+							logicalId: id,
+							action: note ? 'update' : 'create',
+							baseRevision: note?.revision || '',
+							revision,
+							generation: 1,
+							summary,
+							ciphertext,
+							wrapper: pair.wrapper
+						};
+						operations.push(await this.makeOperation('commit', id, payload));
+						contents.push({ id: revision, logicalId: id, revision, generation: 1, ciphertext });
+						note = {
+							id,
+							logicalId: id,
+							serverId: '',
+							revision,
+							summaryRevision: revision,
+							generation: 1,
+							summary,
+							deleted: false,
+							updated: now()
+						};
+					}
+					if (source.deleted) {
+						const revision = newId();
+						operations.push(
+							await this.makeOperation('commit', id, {
+								epoch: this.scope.epoch,
+								operationId: newId(),
+								logicalId: id,
+								action: 'delete',
+								baseRevision: note.revision,
+								revision
+							})
+						);
+						note = { ...note, revision, deleted: true };
+					}
+					notes.push(note);
+					if (source.folder !== 'Notes') {
+						const objectId = newId(),
+							revision = newId();
+						const ciphertext = await encryptObject(
+							{ noteId: id, folder: source.folder },
+							this.encryptionState.key,
+							context('personal:placement', this.scope, objectId, revision)
+						);
+						if (ciphertext.ct.length > 2800000)
+							throw new Error('A folder name is too large to sync.');
+						const object = {
+							id: objectId,
+							objectId,
+							objectType: 'placement',
+							revision,
+							ciphertext,
+							deleted: false
+						};
+						objects.push(object);
+						operations.push(
+							await this.makeOperation('object', objectId, {
+								...object,
+								epoch: this.scope.epoch,
+								operationId: newId(),
+								baseRevision: ''
+							})
+						);
+					}
+				}
+				this.importStatus = 'Saving encrypted notes…';
+				// The entire file lands together, including every history and upload request.
+				// Encryption finishes first so crypto cannot let the IDB transaction expire.
+				await this.db.transaction(
+					['notes', 'contents', 'grants', 'objects', 'outbox', 'meta'],
+					'readwrite',
+					async (s) => {
+						for (const note of notes) await s.notes.put(note);
+						for (const body of contents) await s.contents.put(body);
+						for (const grant of grants) await s.grants.put(grant);
+						for (const object of objects) await s.objects.put(object);
+						let order = (await s.meta.get('order'))?.value || 0;
+						for (const operation of operations)
+							await s.outbox.put({ ...operation, order: ++order });
+						await s.meta.put({ id: 'order', value: order });
+					}
+				);
+				committed = true;
+			});
+			if (!ok)
+				throw new Error(
+					'Import could not be saved. No notes were added. Check browser storage and try again.'
+				);
+			await this.loadNotes();
+			this.importStatus = `Imported ${plan.activeCount} ${plan.activeCount === 1 ? 'note' : 'notes'}. ${plan.deletedCount ? `${plan.deletedCount} deleted notes remain deleted. ` : ''}Changes are saved on this device and will sync when connected.`;
+			this.flushPendingPushes();
+			return true;
+		} catch (error) {
+			this.importError = committed
+				? 'The import was saved, but the list could not refresh. Reload to see the notes; do not import the file again.'
+				: error.message;
+			this.importStatus = '';
+			return committed;
+		} finally {
+			this.importBusy = false;
+		}
+	}
+
 	async submitKeyChange(currentKey, newKey, confirmKey) {
 		this.changeKeyError = '';
 		this.changeKeyStatus = '';
@@ -2203,6 +2358,7 @@ export class JNoteState {
 		this.settingsOpen = false;
 		this.changeKeyOpen = false;
 		this.customCssOpen = false;
+		this.importOpen = false;
 	}
 
 	async buildPlaintextExport() {
@@ -2245,6 +2401,7 @@ export class JNoteState {
 				: { title: note.title || '' };
 			notes.push({
 				id: note.id,
+				revision: note.revision || '',
 				title: summary.title,
 				folder:
 					note.folder ||

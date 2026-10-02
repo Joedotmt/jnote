@@ -51,6 +51,8 @@ function parse(record, field) {
 	if (value == null) return null;
 	const serialized = JSON.parse(JSON.stringify(value));
 	if (Array.isArray(serialized)) {
+		// PocketBase 0.28 represents an unset optional JSON field as an empty byte slice.
+		if (!serialized.length) return null;
 		let raw = '';
 		for (let i = 0; i < serialized.length; i += 8192)
 			raw += String.fromCharCode(...serialized.slice(i, i + 8192));

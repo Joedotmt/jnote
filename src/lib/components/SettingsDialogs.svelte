@@ -1,11 +1,19 @@
 <script>
 	import { tick } from 'svelte';
+	import { normalizeNoteImport } from '../noteImport.js';
 
 	let { app } = $props();
 
 	let settingsDialog = $state();
 	let customCssDialog = $state();
 	let changeKeyDialog = $state();
+	let importDialog = $state();
+	let importInput = $state();
+	let importData = $state.raw(null);
+	let importPreview = $state.raw(null);
+	let importReading = $state(false);
+	let importComplete = $state(false);
+	let importReadSequence = 0;
 	let customCssInput = $state();
 	let currentKeyInput = $state();
 	let newKeyInput = $state();
@@ -48,6 +56,73 @@
 			confirmKey = '';
 		}
 	});
+
+	$effect(() => {
+		if (!importDialog) return;
+		if (app.importOpen && !importDialog.open) importDialog.showModal();
+		else if (!app.importOpen && importDialog.open) {
+			importDialog.close();
+			importReadSequence += 1;
+			importData = null;
+			importPreview = null;
+			importReading = false;
+			if (importInput) importInput.value = '';
+		}
+	});
+
+	function openImport() {
+		app.settingsOpen = false;
+		app.importError = '';
+		app.importStatus = '';
+		importComplete = false;
+		app.importOpen = true;
+	}
+
+	async function readImportFile(event) {
+		const file = event.currentTarget.files?.[0];
+		const sequence = ++importReadSequence;
+		importData = null;
+		importPreview = null;
+		importComplete = false;
+		app.importError = '';
+		app.importStatus = '';
+		importReading = false;
+		if (!file) return;
+		importReading = true;
+		try {
+			const data = JSON.parse((await file.text()).replace(/^\uFEFF/, ''));
+			const preview = normalizeNoteImport(data);
+			if (sequence !== importReadSequence || !app.importOpen) return;
+			importData = data;
+			importPreview = preview;
+		} catch (error) {
+			if (sequence === importReadSequence && app.importOpen)
+				app.importError =
+					error instanceof SyntaxError
+						? 'This file is not valid JSON. Choose your JNote export file.'
+						: error.message;
+		} finally {
+			if (sequence === importReadSequence) importReading = false;
+		}
+	}
+
+	async function submitImport(event) {
+		event.preventDefault();
+		if (!importData || importComplete) return;
+		importComplete = await app.importNotes(importData);
+		if (importComplete) {
+			importData = null;
+			importPreview = null;
+		}
+	}
+
+	function closeImport(event) {
+		if (app.importBusy) {
+			event?.preventDefault();
+			return;
+		}
+		app.importOpen = false;
+	}
 
 	function closeOnBackdrop(event, close) {
 		const dialog = event.currentTarget;
@@ -151,6 +226,16 @@
 		</button>
 		<button
 			class="settings-row-button"
+			id="open-import-notes-dialog"
+			type="button"
+			disabled={app.importBusy}
+			onclick={openImport}
+		>
+			<i aria-hidden="true">file_upload</i>
+			<span>Import notes</span>
+		</button>
+		<button
+			class="settings-row-button"
 			id="open-change-key-dialog"
 			type="button"
 			onclick={() => app.openChangeKey()}
@@ -174,6 +259,80 @@
 			</button>
 		{/if}
 	</div>
+</dialog>
+
+<dialog
+	bind:this={importDialog}
+	class="settings-dialog import-notes-dialog"
+	id="import-notes-dialog"
+	aria-labelledby="import-notes-dialog-title"
+	onclose={() => (app.importOpen = false)}
+	oncancel={closeImport}
+	onclick={(event) => closeOnBackdrop(event, () => closeImport())}
+>
+	<form class="settings-dialog-content" onsubmit={submitImport}>
+		<div class="settings-dialog-header">
+			<h2 id="import-notes-dialog-title">Import notes</h2>
+			<button
+				class="icon-dialog-btn"
+				type="button"
+				aria-label="Close import"
+				disabled={app.importBusy}
+				onclick={closeImport}
+			>
+				<i aria-hidden="true">close</i>
+			</button>
+		</div>
+		<p class="settings-dialog-copy">
+			Choose the JSON file from Download all data/notes. Older JNote exports work too. Notes,
+			folders, and saved versions are added as new copies, encrypted with your current key. Unsaved
+			text is included as a saved version. Existing notes stay as they are.
+		</p>
+		<label for="import-notes-file">JNote export file</label>
+		<input
+			bind:this={importInput}
+			id="import-notes-file"
+			type="file"
+			accept=".json,application/json"
+			disabled={app.importBusy || importComplete}
+			onchange={readImportFile}
+		/>
+		{#if importReading}
+			<p class="settings-dialog-status" role="status">Reading backup…</p>
+		{/if}
+		{#if importPreview}
+			<p class="settings-dialog-copy" id="import-notes-preview">
+				{importPreview.activeCount}
+				{importPreview.activeCount === 1 ? 'note' : 'notes'},
+				{importPreview.versionCount} saved versions.
+				{#if importPreview.deletedCount}{importPreview.deletedCount} deleted notes will stay deleted.{/if}
+				Importing this file again adds another set of copies.
+			</p>
+		{/if}
+		{#if app.importStatus}
+			<p class="settings-dialog-status" id="import-notes-status" role="status" aria-live="polite">
+				{app.importStatus}
+			</p>
+		{/if}
+		{#if app.importError}
+			<p class="settings-dialog-error" id="import-notes-error" role="alert">{app.importError}</p>
+		{/if}
+		<div class="settings-dialog-actions">
+			<button class="btn-secondary" type="button" disabled={app.importBusy} onclick={closeImport}
+				>{importComplete ? 'Done' : 'Cancel'}</button
+			>
+			{#if !importComplete}
+				<button
+					class="btn-primary"
+					id="submit-import-notes"
+					type="submit"
+					disabled={!importPreview || importReading || app.importBusy}
+				>
+					{app.importBusy ? 'Importing…' : 'Import notes'}
+				</button>
+			{/if}
+		</div>
+	</form>
 </dialog>
 
 <dialog

@@ -245,6 +245,11 @@ try {
 			context('personal:folder', scope, objectId, objectRevision)
 		)
 	});
+	const objectChanges = await api.changes(b.epoch, changes.cursor);
+	const folderChange = objectChanges.changes.find((item) => item.objectId === objectId);
+	assert.equal(folderChange.type, 'object');
+	assert.equal(folderChange.grant, null, 'Personal objects have no note-key grant.');
+	assert.equal(folderChange.value.ciphertext.v, 2);
 	assert.equal((await admin.collection('jnote_content').getFullList()).length, 1);
 	const publication = await createPublication(
 		'Published',
