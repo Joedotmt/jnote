@@ -100,10 +100,17 @@
 						link.href = href;
 						document.head.append(link);
 					}
-					const beer = document.createElement('script');
-					beer.type = 'module';
-					beer.src = 'https://cdn.jsdelivr.net/npm/beercss@3.9.7/dist/cdn/beer.min.js';
-					document.head.append(beer);
+					// BeerCSS observes document.body as soon as its module evaluates. Cached
+					// requests can finish while this head is still being parsed, before a body exists.
+					const loadBeer = () => {
+						const beer = document.createElement('script');
+						beer.type = 'module';
+						beer.src = 'https://cdn.jsdelivr.net/npm/beercss@3.9.7/dist/cdn/beer.min.js';
+						document.head.append(beer);
+					};
+					if (document.readyState === 'loading')
+						document.addEventListener('DOMContentLoaded', loadBeer, { once: true });
+					else loadBeer();
 				}
 				window.__joeAccountsReady = new Promise((resolve) => {
 					if (

@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 const html = readFileSync(new URL('../src/app.html', import.meta.url), 'utf8');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-function boot(path, hash) {
+function boot(path, hash, readyState = 'complete') {
 	const appended = [];
+	const listeners = new Map();
 	let reads = 0;
 	const location = { pathname: path, hash, search: '', origin: 'http://localhost:5173' };
 	const ctx = {
@@ -22,6 +23,9 @@ function boot(path, hash) {
 			}
 		},
 		document: {
+			readyState,
+			body: readyState === 'loading' ? null : {},
+			addEventListener: (name, callback, options) => listeners.set(name, { callback, options }),
 			documentElement: { classList: { add() {} } },
 			head: { append: (v) => appended.push(v), appendChild: (v) => appended.push(v) },
 			createElement: (tag) => ({ tag }),
@@ -37,8 +41,27 @@ function boot(path, hash) {
 	};
 	vm.createContext(ctx);
 	scripts.forEach((s) => vm.runInContext(s, ctx));
-	return { ctx, appended, reads };
+	return { ctx, appended, reads, listeners };
 }
+test('the UI module waits until document.body exists even when cached assets load immediately', () => {
+	const { ctx, appended, listeners } = boot('/', '', 'loading');
+	assert.equal(ctx.document.body, null);
+	assert.equal(
+		appended.some((element) => element.src?.includes('beer.min.js')),
+		false
+	);
+	const ready = listeners.get('DOMContentLoaded');
+	assert.equal(ready.options.once, true);
+	ctx.document.body = {};
+	ctx.document.readyState = 'interactive';
+	ready.callback();
+	assert.equal(appended.filter((element) => element.src?.includes('beer.min.js')).length, 1);
+	assert.equal(
+		boot('/', '').appended.filter((element) => element.src?.includes('beer.min.js')).length,
+		1
+	);
+	assert.equal(boot('/s/' + 'a'.repeat(43), '', 'loading').listeners.size, 0);
+});
 test('public direct navigation, trailing slashes and repository fallback consume the key once before scripts', () => {
 	for (const path of [
 		'/s/' + 'a'.repeat(43),
